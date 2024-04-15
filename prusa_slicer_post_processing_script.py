@@ -524,7 +524,8 @@ class Layer():
                 h=l.split(":")
                 self.height=float(h[-1])
                 return
-        warnings.warn(f"Layer {self.layernumber}: no height found, using layerheight default!")
+        if self.layernumber > 0:
+            warnings.warn(f"Layer {self.layernumber}: no height found, using layerheight default!")
         self.height=self.parameters.get("layer_height")
     def getRealFeatureStartPoint(self,idf:int)->Point:
         """ since GCode only stores destination of the move, the origin of the first move has to be included."""
@@ -1108,8 +1109,9 @@ def readSettingsFromGCode2dict(gcodeLines:list,fallbackValuesDict:dict)->dict:
             else:
                 gCodeSettingDict[key]=val[0]
                 if not isWarned:
-                    warnings.warn(f"{key} was specified as tuple/list, this is normal for using multiple extruders. For all list values First values will be used. If unhappy: Add manual fallback value by searching for ADD FALLBACK in the code. And add 'Fallback_<key>:<yourValue>' into the dictionary.")
-                    isWarned=True
+                    if key != 'wiping_volumes_extruders':
+                        warnings.warn(f"{key = } {type(val)} was specified as tuple/list, this is normal for using multiple extruders. For all list values First values will be used. If unhappy: Add manual fallback value by searching for ADD FALLBACK in the code. And add 'Fallback_<key>:<yourValue>' into the dictionary.")
+                        isWarned=True
     return gCodeSettingDict
 
 def checkforNecesarrySettings(gCodeSettingDict:dict)->bool:
