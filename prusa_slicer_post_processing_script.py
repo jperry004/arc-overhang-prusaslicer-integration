@@ -42,6 +42,8 @@ import argparse
 def makeFullSettingDict(gCodeSettingDict:dict) -> dict:
     """Merge Two Dictionarys and set some keys/values explicitly"""
     #the slicer-settings will be imported from GCode. But some are Arc-specific and need to be adapted by you.
+    output_name = path2GCode.replace('.gcode', '-arcs-added.gcode')
+    print(f'{output_name = }')
     AddManualSettingsDict={
         #adapt these settings as needed for your specific geometry/printer:
         "CheckForAllowedSpace":False,# use the following x&y filter or not
@@ -55,7 +57,7 @@ def makeFullSettingDict(gCodeSettingDict:dict) -> dict:
         "MaxDistanceFromPerimeter":2*gCodeSettingDict.get("perimeter_extrusion_width"),#Control how much bumpiness you allow between arcs and perimeter. lower will follow perimeter better, but create a lot of very small arcs. Should be more that 1 Arcwidth! Unit:mm
         "MinArea":5*10,#Unit:mm2
         "MinBridgeLength":5,#Unit:mm
-        "Path2Output":r"", #leave empty to overwrite the file or write to a new file. Full path required.
+        "Path2Output":output_name, #leave empty to overwrite the file or write to a new file. Full path required.
         "RMax":110, # the max radius of the arcs.
         "TimeLapseEveryNArcs": 0, #deactivate with 0, inserts M240 after N ArcLines, 5 is a good value to start.
 
@@ -94,6 +96,7 @@ def makeFullSettingDict(gCodeSettingDict:dict) -> dict:
         "plotEachHilbert":False,
         "PrintDebugVerification":False
         }
+    print(f'{gCodeSettingDict.get("nozzle_diameter") = }')
     gCodeSettingDict.update(AddManualSettingsDict)
     return gCodeSettingDict
 
