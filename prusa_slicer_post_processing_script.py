@@ -55,7 +55,7 @@ def makeFullSettingDict(gCodeSettingDict:dict) -> dict:
         "ArcTravelFeedRate":30*60, # slower travel speed, Unit:mm/min
         "ExtendIntoPerimeter":1.5*gCodeSettingDict.get("perimeter_extrusion_width"), #min=0.5extrusionwidth!, extends the Area for arc generation, put higher to go through small passages. Unit:mm
         "MaxDistanceFromPerimeter":2*gCodeSettingDict.get("perimeter_extrusion_width"),#Control how much bumpiness you allow between arcs and perimeter. lower will follow perimeter better, but create a lot of very small arcs. Should be more that 1 Arcwidth! Unit:mm
-        "MinArea":5*10,#Unit:mm2
+        "MinArea":35,#Unit:mm2
         "MinBridgeLength":5,#Unit:mm
         "Path2Output":output_name, #leave empty to overwrite the file or write to a new file. Full path required.
         "RMax":110, # the max radius of the arcs.
@@ -94,7 +94,7 @@ def makeFullSettingDict(gCodeSettingDict:dict) -> dict:
         "plotArcsFinal":False, #plot arcs for every filled polygon, when completely filled. use for debugging
         "plotDetectedInfillPoly":False, # plot each detected overhang polygon, use for debugging.
         "plotEachHilbert":False,
-        "PrintDebugVerification":False
+        "PrintDebugVerification":True
         }
     print(f'{gCodeSettingDict.get("nozzle_diameter") = }')
     gCodeSettingDict.update(AddManualSettingsDict)
@@ -280,9 +280,13 @@ def main(gCodeFileStream,path2GCode,skipInput)->None:
                         #    plot_geometry(Point(arc.coords[0]))
                         #plt.axis('square')
                         #plt.show()
+                        arcs4gcode = [x for x in arcs4gcode if not x.is_empty]
                         for ida,arc in enumerate(arcs4gcode):
+                            final_arc = ida == len(arcs4gcode) - 1
+                            print(f'{final_arc = } {ida = } {len(arcs4gcode) = }')
                             if not arc.is_empty:
-                                arcGCode=arc2GCode(arcline=arc,eStepsPerMM=eStepsPerMM,arcidx=ida,kwargs=parameters)
+
+                                arcGCode=arc2GCode(arcline=arc,eStepsPerMM=eStepsPerMM,arcidx=ida,final_arc=final_arc,kwargs=parameters)
                                 arcOverhangGCode.append(arcGCode)
                                 if parameters.get("TimeLapseEveryNArcs")>0:
                                     if ida%parameters.get("TimeLapseEveryNArcs"):
@@ -715,7 +719,10 @@ class Layer():
                     if self.parameters.get("PrintDebugVerification"):print(f"Layer {self.layernumber}: Poly{idp} is not in allowedSpacePolygon")
                     continue
                 if poly.area<self.parameters.get("MinArea"):
-                    if self.parameters.get("PrintDebugVerification"):print(f"Layer {self.layernumber}: Poly{idp} has to little area: {poly.area:.2f}")
+                    if self.parameters.get("PrintDebugVerification"):
+                        print(f"Layer {self.layernumber}: Poly{idp} has too little area: {poly.area:.2f}")
+                        print(f'{poly = }')
+                        
                     continue
                 for ohp in overhangs:
                     if poly.distance(ohp)<minDistForValidation:
@@ -723,6 +730,11 @@ class Layer():
                             self.validpolys.append(poly)
                             self.deleteTheseInfills.append(idp)
                             break
+                        else:
+                            print(f'{ohp.length = } < {self.parameters.get("MinBridgeLength") = }')
+                    else:
+                        print(f'{poly.distance(ohp) = } > {minDistForValidation}')                        
+                    
                     if self.parameters.get("PrintDebugVerification"):print(f"Layer {self.layernumber}: Poly{idp} is not close enough to overhang perimeters")
 
 
@@ -1162,7 +1174,7 @@ def retractGCode(retract:bool=True,kwargs:dict={})->str:
 def setFeedRateGCode(F:int)->str:
     return f"G1 F{F}\n"
 
-def arc2GCode(arcline:LineString,eStepsPerMM:float,arcidx=None,kwargs={})->list:
+def arc2GCode(arcline:LineString,eStepsPerMM:float,arcidx=None,final_arc=None,kwargs={})->list:
     GCodeLines=[]
     p1=None
     pts=[Point(p) for p in arcline.coords]
@@ -1191,7 +1203,8 @@ def arc2GCode(arcline:LineString,eStepsPerMM:float,arcidx=None,kwargs={})->list:
                 p1=p
         if idp==len(pts)-1:
             GCodeLines.append(p2GCode(pExtend,E=extDist*eStepsPerMM))#extend arc tangentially for better bonding between arcs
-            GCodeLines.append(retractGCode(retract=True,kwargs=kwargs))
+            if not final_arc:
+                GCodeLines.append(retractGCode(retract=True,kwargs=kwargs))
     return GCodeLines
 
 # def hilbert2GCode(allhilbertpts:list,parameters:dict,layerheight:float):
