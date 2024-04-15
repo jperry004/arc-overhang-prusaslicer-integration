@@ -69,7 +69,7 @@ def makeFullSettingDict(gCodeSettingDict:dict) -> dict:
         "specialCoolingZdist":3, #use the special cooling XX mm above the arcs. Set to a negative value to disable (not recommended).
 
         #advanced Settings, you should not need to touch these.
-        "ArcExtrusionMultiplier":1.35,
+        "ArcExtrusionMultiplier":1,
         "ArcSlowDownBelowThisDuration":3,# Arc Time below this Duration =>slow down, Unit: sec
         "ArcWidth":gCodeSettingDict.get("nozzle_diameter")*0.95, #change the spacing between the arcs,should be nozzle_diameter
         "ArcFanSpeed":255,#cooling to full blast=255
@@ -288,23 +288,23 @@ def main(gCodeFileStream,path2GCode,skipInput)->None:
                         modify=True
                         gcodeWasModified=True
 
-                #apply special cooling settings:
-                if len(layer.oldpolys)>0 and gcodeWasModified:
-                    modify=True
-                    print("oldpolys found in layer:",idl)
-                    layer.spotSolidInfill()
-                    layer.makePolysFromSolidInfill(extend=parameters.get("ExtendIntoPerimeter"))
-                    layer.solidPolys=layer.mergePolys(layer.solidPolys)
-                    allhilbertpts=[]
-                    for poly in layer.solidPolys:
-                        hilbertpts=layer.createHilbertCurveInPoly(poly)
-                        allhilbertpts.extend(hilbertpts)
-                        if parameters.get("plotEachHilbert"):
-                            plot_geometry(hilbertpts,changecolor=True)
-                            plot_geometry(layer.solidPolys)
-                            plt.title("Debug")
-                            plt.axis('square')
-                            plt.show()
+                # #apply special cooling settings:
+                # if len(layer.oldpolys)>0 and gcodeWasModified:
+                #     modify=True
+                #     print("oldpolys found in layer:",idl)
+                #     layer.spotSolidInfill()
+                #     layer.makePolysFromSolidInfill(extend=parameters.get("ExtendIntoPerimeter"))
+                #     layer.solidPolys=layer.mergePolys(layer.solidPolys)
+                #     allhilbertpts=[]
+                #     for poly in layer.solidPolys:
+                #         hilbertpts=layer.createHilbertCurveInPoly(poly)
+                #         allhilbertpts.extend(hilbertpts)
+                #         if parameters.get("plotEachHilbert"):
+                #             plot_geometry(hilbertpts,changecolor=True)
+                #             plot_geometry(layer.solidPolys)
+                #             plt.title("Debug")
+                #             plt.axis('square')
+                #             plt.show()
                 if modify:
                     modifiedlayer=Layer([],parameters,idl) # copy the other infos if needed: future to do
                     isInjected=False
@@ -335,19 +335,19 @@ def main(gCodeFileStream,path2GCode,skipInput)->None:
                                     if "X" in layer.lines[id]:
                                         modifiedlayer.lines.append(layer.lines[id])
                                         break
-                        if layer.oldpolys:
-                            if ";TYPE" in line and not hilbertIsInjected:# startpoint of solid infill: print all hilberts from here.
-                                hilbertIsInjected=True
-                                injectionStart=idline
-                                modifiedlayer.lines.append(";TYPE:Solid infill\n")
-                                modifiedlayer.lines.append(f"M106 S{parameters.get('aboveArcsFanSpeed')}\n")
-                                hilbertGCode=hilbert2GCode(allhilbertpts,parameters,layer.height)
-                                modifiedlayer.lines.extend(hilbertGCode)
-                                #add restored pre-injected tool position
-                                for id in reversed(range(injectionStart)):
-                                    if "X" in layer.lines[id]:
-                                        modifiedlayer.lines.append(layer.lines[id])
-                                        break
+                        # if layer.oldpolys:
+                        #     if ";TYPE" in line and not hilbertIsInjected:# startpoint of solid infill: print all hilberts from here.
+                        #         hilbertIsInjected=True
+                        #         injectionStart=idline
+                        #         modifiedlayer.lines.append(";TYPE:Solid infill\n")
+                        #         modifiedlayer.lines.append(f"M106 S{parameters.get('aboveArcsFanSpeed')}\n")
+                        #         hilbertGCode=hilbert2GCode(allhilbertpts,parameters,layer.height)
+                        #         modifiedlayer.lines.extend(hilbertGCode)
+                        #         #add restored pre-injected tool position
+                        #         for id in reversed(range(injectionStart)):
+                        #             if "X" in layer.lines[id]:
+                        #                 modifiedlayer.lines.append(layer.lines[id])
+                        #                 break
                         if "G1 F" in line.split(";")[0]:#special block-speed-command
                             curPrintSpeed=line
                         if layer.exportThisLine(idline):
@@ -1189,23 +1189,23 @@ def arc2GCode(arcline:LineString,eStepsPerMM:float,arcidx=None,kwargs={})->list:
             GCodeLines.append(retractGCode(retract=True,kwargs=kwargs))
     return GCodeLines
 
-def hilbert2GCode(allhilbertpts:list,parameters:dict,layerheight:float):
-    hilbertGCode=[]
-    eStepsPerMM=calcEStepsPerMM(parameters,layerheight)
-    for idc,curvepts in enumerate(allhilbertpts):
-        for idp,p in enumerate(curvepts):
-            if idp==0:
-                hilbertGCode.append(p2GCode(p,F=parameters.get("ArcTravelFeedRate")))
-                if idc==0:
-                    hilbertGCode.append(retractGCode(False,parameters))
-            elif idp==1:
-                hilbertGCode.append(p2GCode(p,E=eStepsPerMM*p.distance(lastP), F=parameters.get("aboveArcsInfillPrintSpeed")))
-            else:
-                hilbertGCode.append(p2GCode(p,E=eStepsPerMM*p.distance(lastP)))
-            lastP=p
-        #finish line
-    hilbertGCode.append(retractGCode(True,parameters))
-    return hilbertGCode
+# def hilbert2GCode(allhilbertpts:list,parameters:dict,layerheight:float):
+#     hilbertGCode=[]
+#     eStepsPerMM=calcEStepsPerMM(parameters,layerheight)
+#     for idc,curvepts in enumerate(allhilbertpts):
+#         for idp,p in enumerate(curvepts):
+#             if idp==0:
+#                 hilbertGCode.append(p2GCode(p,F=parameters.get("ArcTravelFeedRate")))
+#                 if idc==0:
+#                     hilbertGCode.append(retractGCode(False,parameters))
+#             elif idp==1:
+#                 hilbertGCode.append(p2GCode(p,E=eStepsPerMM*p.distance(lastP), F=parameters.get("aboveArcsInfillPrintSpeed")))
+#             else:
+#                 hilbertGCode.append(p2GCode(p,E=eStepsPerMM*p.distance(lastP)))
+#             lastP=p
+#         #finish line
+#     hilbertGCode.append(retractGCode(True,parameters))
+#     return hilbertGCode
 
 def _warning(message,category = UserWarning, filename = '', lineno = -1,*args, **kwargs):
     print(f"{filename}:{lineno}: {message}")
