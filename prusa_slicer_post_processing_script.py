@@ -1189,12 +1189,11 @@ def arc2GCode(arcline:LineString,eStepsPerMM:float,arcidx=None,final_arc=None,kw
                             kwargs.get("ArcMinPrintSpeed",1*60),kwargs.get('ArcPrintSpeed',2*60)) # *60 bc unit conversion:mm/s=>mm/min
     for idp,p in enumerate(pts):
         if idp==0:
+            GCodeLines.append(retractGCode(retract=True,kwargs=kwargs))
             p1=p
             GCodeLines.append(f";Arc {arcidx if arcidx else ' '} Length:{arcline.length}\n")
             GCodeLines.append(p2GCode(p,F=kwargs.get('ArcTravelFeedRate',100*60)))#feedrate is mm/min...
-            # Skip the first deretraction, assume slicer added it for layer change or travel
-            if arcidx > 0:    
-                GCodeLines.append(retractGCode(retract=False,kwargs=kwargs))
+            GCodeLines.append(retractGCode(retract=False,kwargs=kwargs))
             GCodeLines.append(setFeedRateGCode(arcPrintSpeed))
         else:
             dist=p.distance(p1)
@@ -1203,9 +1202,7 @@ def arc2GCode(arcline:LineString,eStepsPerMM:float,arcidx=None,final_arc=None,kw
                 p1=p
         if idp==len(pts)-1:
             GCodeLines.append(p2GCode(pExtend,E=extDist*eStepsPerMM))#extend arc tangentially for better bonding between arcs
-            if not final_arc:
-                GCodeLines.append(retractGCode(retract=True,kwargs=kwargs))
-    return GCodeLines
+    return GCodeLines        
 
 # def hilbert2GCode(allhilbertpts:list,parameters:dict,layerheight:float):
 #     hilbertGCode=[]
