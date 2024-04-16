@@ -26,6 +26,7 @@ Known issues:
 #!/usr/bin/python
 import sys
 import os
+import json
 from shapely import Point, Polygon, LineString, GeometryCollection, MultiLineString, MultiPolygon
 from shapely.ops import nearest_points
 from shapely.ops import linemerge, unary_union
@@ -103,11 +104,17 @@ def makeFullSettingDict(gCodeSettingDict:dict) -> dict:
 ################################# MAIN FUNCTION #################################
 #################################################################################
 #at the top, for better reading
-def main(gCodeFileStream,path2GCode,skipInput)->None:
+def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
     '''Here all the work is done, therefore it is much to long.'''
     gCodeLines=gCodeFileStream.readlines()
-    gCodeSettingDict=readSettingsFromGCode2dict(gCodeLines,{"Fallback_nozzle_diameter":0.4,"Fallback_filament_diameter":1.75}) #ADD FALLBACK VALUES HERE
-    parameters=makeFullSettingDict(gCodeSettingDict)
+    defaultSettings = {
+    "Fallback_nozzle_diameter": 0.4,
+    "Fallback_filament_diameter": 1.75} # add fallback settings here
+
+    gCodeSettingDict = readSettingsFromGCode2dict(gCodeLines, defaultSettings)
+    parameters = makeFullSettingDict(gCodeSettingDict)
+    if overrideSettings:
+        parameters.update(json.loads(overrideSettings))
     if not checkforNecesarrySettings(gCodeSettingDict):
         warnings.warn("Incompatible PursaSlicer-Settings used!")
         input("Can not run script, gcode unmodified. Press enter to close.")
@@ -283,7 +290,6 @@ def main(gCodeFileStream,path2GCode,skipInput)->None:
                         arcs4gcode = [x for x in arcs4gcode if not x.is_empty]
                         for ida,arc in enumerate(arcs4gcode):
                             final_arc = ida == len(arcs4gcode) - 1
-                            print(f'{final_arc = } {ida = } {len(arcs4gcode) = }')
                             if not arc.is_empty:
 
                                 arcGCode=arc2GCode(arcline=arc,eStepsPerMM=eStepsPerMM,arcidx=ida,final_arc=final_arc,kwargs=parameters)
@@ -403,17 +409,13 @@ def main(gCodeFileStream,path2GCode,skipInput)->None:
 ################################# HELPER FUNCTIONS GCode->Polygon #################################
 ###################################################################################################
 
-def getFileStreamAndPath(read=True):
-    if len(sys.argv) != 2:
-        print("Usage: python3 ex1.py <filename>")
-        sys.exit(1)
-    filepath = sys.argv[1]
+def getFileStreamAndPath(args, read=True):
     try:
         if read:
-            f = open(filepath, "r")
+            f = open(args.path, "r")
         else:
-            f=open(filepath, "w")
-        return f,filepath
+            f=open(args.path, "w")
+        return f,args.path
     except IOError:
         input("File not found.Press enter.")
         sys.exit(1)
@@ -1188,6 +1190,8 @@ def arc2GCode(arcline:LineString,eStepsPerMM:float,arcidx=None,final_arc=None,kw
     pExtend=move_toward_point(pts[-2],pts[-1],extDist)
     arcPrintSpeed=np.clip(arcline.length/(kwargs.get("ArcSlowDownBelowThisDuration",3))*60,
                             kwargs.get("ArcMinPrintSpeed",1*60),kwargs.get('ArcPrintSpeed',2*60)) # *60 bc unit conversion:mm/s=>mm/min
+    # arcPrintSpeed = kwargs.get('ArcPrintSpeed', 90)
+    # print(f'{arcPrintSpeed = }')
     for idp,p in enumerate(pts):
         if idp==0:
             GCodeLines.append(retractGCode(retract=True,kwargs=kwargs))
@@ -1233,17 +1237,17 @@ warnings.showwarning = _warning
 def parse_args():
     parser = argparse.ArgumentParser(description="Process G-code files.")
     parser.add_argument('path', type=str, help='Path to the G-code file')
+    parser.add_argument('--settings', type=str, help='JSON string of settings to override default values')
     parser.add_argument('--skip-input', action='store_true', help='Skip any user input prompts (non-Windows only)')
     return parser.parse_args()
 
 if __name__ == "__main__":
     args = parse_args()
-
+    overrideSettings = args.settings if args.settings else None
     # Get file stream and path based on the provided path
-    gCodeFileStream, path2GCode = getFileStreamAndPath(args.path)
-
+    gCodeFileStream, path2GCode = getFileStreamAndPath(args)
     # Determine whether to skip input based on the platform and command line argument
     skipInput = args.skip_input or platform.system() != "Windows"
-
     # Call the main function with the arguments
-    main(gCodeFileStream, path2GCode, skipInput)
+    main(gCodeFileStream, path2GCode, skipInput, overrideSettings)
+
