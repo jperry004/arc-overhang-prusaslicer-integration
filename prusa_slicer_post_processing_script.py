@@ -1168,7 +1168,8 @@ def p2GCode(p:Point,E=0,**kwargs)->str:
 
 def retractGCode(retract:bool=True,kwargs:dict={})->str:
     retractDist=kwargs.get("retract_length",1)
-    E= -retractDist if retract else retractDist
+    restartExtra = kwargs.get("retract_restart_extra")
+    E= -retractDist if retract else retractDist + restartExtra
     return f"G1 E{E} F{kwargs.get('retract_speed',35)*60}\n"
 
 def setFeedRateGCode(F:int)->str:
