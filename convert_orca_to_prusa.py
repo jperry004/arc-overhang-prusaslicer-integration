@@ -35,7 +35,8 @@ def inject_commands_after_marker(input_file, marker):
 
         # Commands to inject, using the extracted width
         commands_to_inject = [
-            f'; overhangs = 1\n',
+            "; prusaslicer_config = begin\n",
+            '; overhangs = 1\n',
             f'; extrusion_width = {extrusion_width}\n',
             f'; perimeter_extrusion_width = {extrusion_width}\n',
             f'; solid_infill_extrusion_width = {extrusion_width}\n'
@@ -44,7 +45,11 @@ def inject_commands_after_marker(input_file, marker):
         # Prepare the new lines with the injection
         modified_lines = []
         for line in lines:
-            modified_lines.append(line)
+            if line.strip() == ';TYPE:Overhang wall':
+                # line = line.replace(';TYPE:Overhang wall', )
+                modified_lines.append(';TYPE:Overhang perimeter\n')
+            else:
+                modified_lines.append(line)
             if marker in line:
                 # Add the specified commands right after the marker
                 modified_lines.extend(commands_to_inject)
