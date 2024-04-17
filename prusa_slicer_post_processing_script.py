@@ -59,7 +59,7 @@ def makeFullSettingDict(gCodeSettingDict:dict) -> dict:
         "MinArea":35,#Unit:mm2
         "MinBridgeLength":5,#Unit:mm
         "Path2Output":output_name, #leave empty to overwrite the file or write to a new file. Full path required.
-        "RMax":110, # the max radius of the arcs.
+        "RMax":5, # the max radius of the arcs.
         "TimeLapseEveryNArcs": 0, #deactivate with 0, inserts M240 after N ArcLines, 5 is a good value to start.
 
         #Special cooling to prevent warping:
@@ -72,7 +72,7 @@ def makeFullSettingDict(gCodeSettingDict:dict) -> dict:
         "specialCoolingZdist":3, #use the special cooling XX mm above the arcs. Set to a negative value to disable (not recommended).
 
         #advanced Settings, you should not need to touch these.
-        "ArcExtrusionMultiplier":1,
+        "ArcExtrusionMultiplier":0.9,
         "ArcSlowDownBelowThisDuration":3,# Arc Time below this Duration =>slow down, Unit: sec
         "ArcWidth":gCodeSettingDict.get("nozzle_diameter")*0.95, #change the spacing between the arcs,should be nozzle_diameter
         "ArcFanSpeed":255,#cooling to full blast=255
@@ -84,16 +84,16 @@ def makeFullSettingDict(gCodeSettingDict:dict) -> dict:
         "HilbertInfillExtrusionMultiplier":1.05,
         "HilbertTravelEveryNSeconds":6, # when N seconds are driven it will continue printing somewhere else (very rough approx).
         "MinStartArcs":2, # how many arcs shall be generated in first step
-        "PointsPerCircle":80, # each Arc starts as a discretized circle. Higher will slow down the code but give more accurate results for the arc-endings.
+        "PointsPerCircle":800, # each Arc starts as a discretized circle. Higher will slow down the code but give more accurate results for the arc-endings.
         "SafetyBreak_MaxArcNumber":2000, #max Number of Arc Start Points. prevents While loop form running for ever.
         "WarnBelowThisFillingPercentage":90, # fill the overhang at least XX%, else send a warning. Easier detection of errors in small/delicate areas. Unit:Percent
         "UseLeastAmountOfCenterPoints":True, # always generates arcs until rMax is reached, divide the arcs into pieces in needed. reduces the amount of centerpoints.
 
         #settings for easier debugging:
-        "plotStart":False, # plot the detected geoemtry in the prev Layer and the StartLine for Arc-Generation, use for debugging
-        "plotArcsEachStep":False, #plot arcs for every filled polygon. use for debugging
-        "plotArcsFinal":False, #plot arcs for every filled polygon, when completely filled. use for debugging
-        "plotDetectedInfillPoly":False, # plot each detected overhang polygon, use for debugging.
+        "plotStart":True, # plot the detected geoemtry in the prev Layer and the StartLine for Arc-Generation, use for debugging
+        "plotArcsEachStep":True, #plot arcs for every filled polygon. use for debugging
+        "plotArcsFinal":True, #plot arcs for every filled polygon, when completely filled. use for debugging
+        "plotDetectedInfillPoly":True, # plot each detected overhang polygon, use for debugging.
         "plotEachHilbert":False,
         "PrintDebugVerification":True
         }
@@ -109,7 +109,8 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
     gCodeLines=gCodeFileStream.readlines()
     defaultSettings = {
     "Fallback_nozzle_diameter": 0.4,
-    "Fallback_filament_diameter": 1.75} # add fallback settings here
+    "Fallback_filament_diameter": 1.75,
+    "Fallback_perimeter_extrusion_width": 0.4} # add fallback settings here
 
     gCodeSettingDict = readSettingsFromGCode2dict(gCodeLines, defaultSettings)
     parameters = makeFullSettingDict(gCodeSettingDict)
@@ -395,6 +396,10 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
             print("write to",path2GCode)
         for layer in layerobjs:
             f.writelines(layer.lines)
+        print('\nAdding settings')
+        f.write('\n---------Arc Overhang Settings-----------')
+        for k,v in parameters.items():
+            f.write(f'\n;{k}: {v}')
         f.close()
     else:
         if numOverhangs > 0:
@@ -699,6 +704,8 @@ class Layer():
                 plt.show()
     def getOverhangPerimeterLineStrings(self):
         parts=self.spotFeaturePoints("Overhang perimeter",includeRealStartPt=True)
+        if not parts:
+            parts=self.spotFeaturePoints("Overhang wall",includeRealStartPt=True)
         if parts:
             return [LineString(pts) for pts in parts]
         else:
@@ -1097,7 +1104,7 @@ def readSettingsFromGCode2dict(gcodeLines:list,fallbackValuesDict:dict)->dict:
     gCodeSettingDict=fallbackValuesDict
     isSetting=False
     for line in gcodeLines:
-        if "; prusaslicer_config = begin" in line:
+        if "; prusaslicer_config = begin" in line or "CONFIG_BLOCK_START" in line:
             isSetting=True
             continue
         if isSetting :
@@ -1188,10 +1195,10 @@ def arc2GCode(arcline:LineString,eStepsPerMM:float,arcidx=None,final_arc=None,kw
     #plt.show()
     extDist=kwargs.get("ExtendArcDist",0.5)
     pExtend=move_toward_point(pts[-2],pts[-1],extDist)
-    arcPrintSpeed=np.clip(arcline.length/(kwargs.get("ArcSlowDownBelowThisDuration",3))*60,
-                            kwargs.get("ArcMinPrintSpeed",1*60),kwargs.get('ArcPrintSpeed',2*60)) # *60 bc unit conversion:mm/s=>mm/min
-    # arcPrintSpeed = kwargs.get('ArcPrintSpeed', 90)
-    # print(f'{arcPrintSpeed = }')
+    # arcPrintSpeed=np.clip(arcline.length/(kwargs.get("ArcSlowDownBelowThisDuration",3))*60,
+    #                         kwargs.get("ArcMinPrintSpeed",1*60),kwargs.get('ArcPrintSpeed',2*60)) # *60 bc unit conversion:mm/s=>mm/min
+    arcPrintSpeed = kwargs.get('ArcPrintSpeed', 90)
+    print(f'{arcPrintSpeed = }')
     for idp,p in enumerate(pts):
         if idp==0:
             GCodeLines.append(retractGCode(retract=True,kwargs=kwargs))
