@@ -3,3 +3,4 @@ test_prints/
 __pycache__/
 .env/
 output/
+*.gcode
