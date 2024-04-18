@@ -484,8 +484,10 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
             rMax=parameters.get("RMax",15)
             # pointsPerCircle=parameters.get("PointsPerCircle",80)
             arcWidth=parameters.get("ArcWidth")
-            rMin=parameters.get("ArcCenterOffset")+arcWidth/1.5
-            rMinStart=3*parameters.get("nozzle_diameter")
+            # rMin=parameters.get("ArcCenterOffset")+arcWidth/1.5
+
+            rMinStart = parameters.get("RMinStartMultiple") * parameters.get("nozzle_diameter")
+            rMin = rMinStart
             #initialize
             finalarcs=[]
             arcs=[]
