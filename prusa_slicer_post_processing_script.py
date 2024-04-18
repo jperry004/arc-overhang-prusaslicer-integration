@@ -186,8 +186,48 @@ def getStartPtOnLS(ls:LineString,kwargs:dict={},choseRandom:bool=False)->Point:
     maxIndex=scores.index(max(scores))
     return pts[maxIndex]
 
+from shapely.geometry import Point
 
-def get_farthest_point(arc:Polygon, base_poly:Polygon, remaining_empty_space:Polygon):#function ported from Steven McCulloch
+def get_farthest_point(arc, base_poly, remaining_empty_space):
+    longest_distance = -1
+    farthest_point = Point(0, 0)
+    pointFound = False
+
+    # Calculate buffer outside the loop
+    buffer_poly = remaining_empty_space.buffer(1e-2)
+
+    if arc.geom_type == 'Polygon':
+        arc_coords = np.array(arc.exterior.coords)
+    elif arc.geom_type == 'LineString':
+        arc_coords = np.linspace(arc.coords[0], arc.coords[1])
+    else:
+        print('get_farthest_distance: Wrong shape type given', type(arc))
+        # Add error handling if needed
+
+    # Bounding box of the base polygon
+    min_x, min_y, max_x, max_y = base_poly.bounds
+
+    # Bounding box check
+    arc_coords = arc_coords[(arc_coords[:,0] >= min_x) & (arc_coords[:,0] <= max_x) & 
+                            (arc_coords[:,1] >= min_y) & (arc_coords[:,1] <= max_y)]
+
+    for p in arc_coords:
+        point = Point(p)
+        distance = point.distance(base_poly.boundary)
+        if distance > longest_distance and buffer_poly.contains(point):
+            longest_distance = distance
+            farthest_point = point
+            pointFound = True
+
+    if pointFound:
+        # Use nearest_points from shapely.ops
+        point_on_poly = nearest_points(base_poly, farthest_point)[0]
+        return farthest_point, longest_distance, point_on_poly
+    else:
+        return None, None, None
+
+
+def old_get_farthest_point(arc:Polygon, base_poly:Polygon, remaining_empty_space:Polygon):#function ported from Steven McCulloch
     """
     Find the point on a given arc that is farthest away from the base polygon.
     In other words, the point on which the largest circle can be drawn without going outside the base polygon.
@@ -764,5 +804,17 @@ if __name__ == "__main__":
     # Determine whether to skip input based on the platform and command line argument
     skipInput = args.skip_input or platform.system() != "Windows"
     # Call the main function with the arguments
+    import time
+    
+    # Start timing
+    start_time = time.perf_counter()
+    
+    # Call the main function
     main(gCodeFileStream, path2GCode, skipInput, overrideSettings)
+    
+    # Calculate execution time
+    end_time = time.perf_counter()
+    execution_time = end_time - start_time
+    
+    print(f"Execution time: {execution_time} seconds")
 
