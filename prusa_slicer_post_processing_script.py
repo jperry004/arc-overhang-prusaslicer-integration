@@ -25,19 +25,15 @@ Known issues:
 """
 #!/usr/bin/python
 import sys
-import os
 import json
-from shapely import Point, Polygon, LineString, GeometryCollection, MultiLineString, MultiPolygon
+from shapely import Point, Polygon, LineString
 from shapely.ops import nearest_points
-from shapely.ops import linemerge, unary_union
 import matplotlib.pyplot as plt
 import numpy as np
 from ast import literal_eval
 import warnings
 import random
 import platform
-#from hilbertcurve.hilbertcurve import HilbertCurve
-from hilbert import decode, encode
 import argparse
 from arc_library import Layer, plot_geometry, Arc
 
@@ -506,7 +502,7 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
             #make parameters more readable
             MaxDistanceFromPerimeter=parameters.get("MaxDistanceFromPerimeter") # how much 'bumpiness' you accept in the outline. Lower will generate more small arcs to follow the perimeter better (corners!). Good practice: 2 perimeters+ threshold of 2width=minimal exact touching (if rMin satisfied)
             rMax=parameters.get("RMax",15)
-            pointsPerCircle=parameters.get("PointsPerCircle",80)
+            # pointsPerCircle=parameters.get("PointsPerCircle",80)
             arcWidth=parameters.get("ArcWidth")
             rMin=parameters.get("ArcCenterOffset")+arcWidth/1.5
             rMinStart=parameters.get("nozzle_diameter")
@@ -662,7 +658,7 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
         if modify:
             modifiedlayer=Layer([],parameters,idl) # copy the other infos if needed: future to do
             isInjected=False
-            hilbertIsInjected=False
+            # hilbertIsInjected=False
             curPrintSpeed="G1 F600"
             messedWithSpeed=False
             messedWithFan=False
