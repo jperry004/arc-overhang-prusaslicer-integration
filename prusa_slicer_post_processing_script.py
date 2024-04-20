@@ -122,7 +122,6 @@ def getStartPtOnLS(ls:LineString,kwargs:dict={},choseRandom:bool=False)->Point:
     maxIndex=scores.index(max(scores))
     return pts[maxIndex]
 
-from shapely.geometry import Point
 
 def get_farthest_point(arc, base_poly, remaining_empty_space):
     longest_distance = -1
@@ -161,7 +160,6 @@ def get_farthest_point(arc, base_poly, remaining_empty_space):
         return farthest_point, longest_distance, point_on_poly
     else:
         return None, None, None
-
 
 def move_toward_point(start_point:Point, target_point:Point, distance:float)->Point:
     """Moves a point a set distance toward another point"""
@@ -205,10 +203,6 @@ def generateMultipleConcentricArcs(startpt:Point,rMin:float,rMax:float, boundary
         #print("True Arc type:",type(arc4gcode))
         r+=kwargs.get("ArcWidth")
     return arcs
-
-################################# HELPER FUNCTIONS Arc Validation #################################
-###################################################################################################
-
 
 ################################# HELPER FUNCTIONS Arc->GCode #################################
 ###############################################################################################
@@ -279,6 +273,7 @@ def checkforNecesarrySettings(gCodeSettingDict:dict)->bool:
     if not gCodeSettingDict.get("avoid_crossing_perimeters"):
         warnings.warn("PrusaSlicer-Setting: Travel Moves may cross the outline and therefore cause artefacts in arc generation.")
     return True
+
 def calcEStepsPerMM(settingsdict:dict,layerheight:float=None)->float:
     if layerheight:# case: printing on surface.
         w=settingsdict.get("infill_extrusion_width")
