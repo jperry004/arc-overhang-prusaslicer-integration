@@ -378,27 +378,24 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
         warnings.warn("Incompatible PursaSlicer-Settings used!")
         input("Can not run script, gcode unmodified. Press enter to close.")
         raise ValueError("Incompatible Settings used!")
-    layerobjs=[]
-    gcodeWasModified=False
-    numOverhangs=0
+    layerobjs=[]; gcodeWasModified=False; numOverhangs=0; lastfansetting=0
     if not gCodeFileStream:
-        pass
+        print('File not found')
+        sys.exit()
     
     layers=splitGCodeIntoLayers(gCodeLines)
     gCodeFileStream.close()
     print("layers:",len(layers))
-    lastfansetting=0 # initialize variable
     for idl,layerlines in enumerate(layers):
         layer=Layer(layerlines,parameters,idl)
         layer.addZ()
         layer.addHeight()
         lastfansetting=layer.spotFanSetting(lastfansetting)
         layerobjs.append(layer)
+        
+    # Iterate over valid polygons in the current layer to generate arcs
     for idl,layer in enumerate(layerobjs):
-        modify=False
-        if idl<1:
-            continue # no overhangs in the first layer and dont mess with the setup
-    
+
         layer.extract_features()
         layer.spotBridgeInfill()
         layer.makePolysFromBridgeInfill(extend=parameters.get("ExtendIntoPerimeter",1))
@@ -432,12 +429,8 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
             # rMin=parameters.get("ArcCenterOffset")+arcWidth/1.5
 
             rMinStart = parameters.get("RMinStartMultiple") * parameters.get("nozzle_diameter")
-            rMin = rMinStart
-            #initialize
-            finalarcs=[]
-            arcs=[]
-            arcs4gcode=[]
-            #find StartPoint and StartLineString
+            rMin = rMinStart; finalarcs=[]; arcs=[]; arcs4gcode=[]
+            # Determine starting point for arcs based on the previous layer's perimeter
             startLineString,boundaryWithOutStartLine=prevLayer.makeStartLineString(poly,parameters)
             if startLineString is None:
                 warnings.warn("Skipping Polygon because no StartLine Found")
@@ -449,8 +442,8 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
             #plot_geometry(startpt,'r')
             #plt.axis('square')
             #plt.show()
-            #first step in Arc Generation
-
+            
+            # Generate concentric arcs from the start point within defined boundaries
             concentricArcs=generateMultipleConcentricArcs(startpt,rMinStart,rMax,boundaryWithOutStartLine,remainingSpace,parameters)
             #print(f"number of concentric arcs generated:",len(concentricArcs))
             if len(concentricArcs)<parameters.get("MinStartArcs"):
@@ -475,9 +468,11 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
                         continue
             arcBoundarys=getArcBoundarys(concentricArcs)
             finalarcs.append(concentricArcs[-1])
+            # Process each concentric arc to update the remaining space by subtracting the area covered by the arc
             for arc in concentricArcs:
                 remainingSpace=remainingSpace.difference(arc.poly.buffer(1e-2))
                 arcs.append(arc)
+            # Collect the boundaries of arcs to prepare for generating G-code instructions
             for arcboundary in arcBoundarys:
                 arcs4gcode.append(arcboundary)
 
