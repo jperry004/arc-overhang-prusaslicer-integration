@@ -318,7 +318,7 @@ def arc2GCode(arcline:LineString,eStepsPerMM:float,arcidx=None,final_arc=None,kw
     # arcPrintSpeed=np.clip(arcline.length/(kwargs.get("ArcSlowDownBelowThisDuration",3))*60,
     #                         kwargs.get("ArcMinPrintSpeed",1*60),kwargs.get('ArcPrintSpeed',2*60)) # *60 bc unit conversion:mm/s=>mm/min
     arcPrintSpeed = kwargs.get('ArcPrintSpeed', 90)
-    print(f'{arcPrintSpeed = }')
+    # print(f'{arcPrintSpeed = }')
     for idp,p in enumerate(pts):
         if idp==0:
             GCodeLines.append(retractGCode(retract=True,kwargs=kwargs))
