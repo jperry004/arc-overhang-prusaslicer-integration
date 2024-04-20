@@ -398,14 +398,13 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
         warnings.warn("Incompatible PursaSlicer-Settings used!")
         input("Can not run script, gcode unmodified. Press enter to close.")
         raise ValueError("Incompatible Settings used!")
-    layerobjs=[]; gcodeWasModified=False; numOverhangs=0
+    layerobjs=[]; gcodeWasModified=False; numOverhangs=0; lastfansetting=0
     if not gCodeFileStream:
         print('No file found')
         sys.exit()
     layers=splitGCodeIntoLayers(gCodeLines)
     gCodeFileStream.close()
     print("layers:",len(layers))
-    lastfansetting=0 # initialize variable
     # setup layers, this should be in Layer __init__
     for idl,layerlines in enumerate(layers):
         layer=Layer(layerlines,parameters,idl)
@@ -415,10 +414,7 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
         layerobjs.append(layer)
         
     # Iterate through each layer object with its index
-    for idl, layer in enumerate(layerobjs):
-        # Skip processing for the first layer
-        if idl < 1:
-            continue
+    for idl, layer in enumerate(layerobjs, start=1):
     
         # Feature extraction and processing for potential overhangs
         layer.extract_features()
@@ -428,6 +424,8 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
         layer.verifyinfillpolys()
     
         # Skip to next iteration if no valid polygons resulted from processing
+        # validpolys are overhangs that will be converted to arcs
+        # old geom. will be deleted of the poly
         if not layer.validpolys:
             continue
         # Prepare to apply special cooling settings based on layer height

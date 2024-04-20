@@ -307,18 +307,37 @@ class Layer():
         parts=self.spotFeaturePoints("Bridge infill",splitAtTravel=True)
         for idf,infillpts in enumerate(parts):
             self.binfills.append(BridgeInfill(infillpts))
-    def makePolysFromBridgeInfill(self,extend:float=1)->None:
+            
+    def makePolysFromBridgeInfill(self, extend: float = 1) -> None:
+        """
+        Create polygonal representations from bridge infill data points by extending the geometries.
+    
+        This function takes line segments representing infill (typically used in areas of a print that span gaps,
+        like bridges) and converts them into polygons by buffering the lines. These polygons can then be used
+        for further processing, such as part of the path planning for the print head.
+    
+        Args:
+        extend (float): The distance by which the line string will be buffered to create a polygon, providing
+                        a margin around the actual line segment.
+    
+        """
+    
+        # Iterate over all bridge infills in the current layer or section
         for bInfill in self.binfills:
-            infillPts=bInfill.pts
-            infillLS=LineString(infillPts)
-            infillPoly=infillLS.buffer(extend)
-            self.polys.append(infillPoly)
-            self.associatedIDs.append(bInfill.id)
+            infillPts = bInfill.pts  # Retrieve the points defining the infill
+            infillLS = LineString(infillPts)  # Create a LineString from the infill points
+            infillPoly = infillLS.buffer(extend)  # Buffer the LineString to create a polygon
+    
+            self.polys.append(infillPoly)  # Add the new polygon to the list of polygons
+            self.associatedIDs.append(bInfill.id)  # Associate the infill ID with the polygon
+    
+            # Plot the created polygon if the corresponding parameter is set
             if self.parameters.get("plotDetectedInfillPoly"):
-                plot_geometry(infillPoly)
-                plot_geometry(infillLS,"g")
-                plt.axis('square')
-                plt.show()
+                plot_geometry(infillPoly)  # Plot the buffered polygon
+                plot_geometry(infillLS, "g")  # Plot the original LineString for reference
+                plt.axis('square')  # Set the plot display to a square aspect ratio
+                plt.show()  # Display the plot
+
     def getOverhangPerimeterLineStrings(self):
         parts=self.spotFeaturePoints("Overhang perimeter",includeRealStartPt=True)
         if not parts:
@@ -327,41 +346,71 @@ class Layer():
             return [LineString(pts) for pts in parts]
         else:
             return []
-    def verifyinfillpolys(self,minDistForValidation:float=0.5)->None:
-        '''Verify a poly by measuring the distance to any overhang parameters. Valid if measuredDist<minDistForValidation'''
-        overhangs=self.getOverhangPerimeterLineStrings()
-        if len(overhangs)>0:
-            if self.parameters.get("PrintDebugVerification"):print(f"Layer {self.layernumber}: {len(overhangs)} Overhangs found")
-            allowedSpacePolygon=self.parameters.get("AllowedSpaceForArcs")
-            if not allowedSpacePolygon:
-                input(f"Layer {self.layernumber}: no allowed space Polygon provided to layer obj, unable to run script. Press Enter.")
-                raise ValueError(f"Layer {self.layernumber}: no allowed space Polygon provided to layer obj")
-            if self.parameters.get("PrintDebugVerification"):print("No of Polys:",len(self.polys))
-            for idp,poly in enumerate(self.polys):
-                if not poly.is_valid:
-                    if self.parameters.get("PrintDebugVerification"):print(f"Layer {self.layernumber}: Poly{idp} is (shapely-)invalid")
-                    continue
-                if (not allowedSpacePolygon.contains(poly)) and self.parameters.get("CheckForAllowedSpace"):
-                    if self.parameters.get("PrintDebugVerification"):print(f"Layer {self.layernumber}: Poly{idp} is not in allowedSpacePolygon")
-                    continue
-                if poly.area<self.parameters.get("MinArea"):
-                    if self.parameters.get("PrintDebugVerification"):
-                        print(f"Layer {self.layernumber}: Poly{idp} has too little area: {poly.area:.2f}")
-                        print(f'{poly = }')
-                        
-                    continue
-                for ohp in overhangs:
-                    if poly.distance(ohp)<minDistForValidation:
-                        if ohp.length>self.parameters.get("MinBridgeLength"):
-                            self.validpolys.append(poly)
-                            self.deleteTheseInfills.append(idp)
-                            break
-                        else:
-                            print(f'{ohp.length = } < {self.parameters.get("MinBridgeLength") = }')
-                    else:
-                        print(f'{poly.distance(ohp) = } > {minDistForValidation}')                        
-                    
-                    if self.parameters.get("PrintDebugVerification"):print(f"Layer {self.layernumber}: Poly{idp} is not close enough to overhang perimeters")
+
+    def verifyinfillpolys(self, minDistForValidation: float = 0.5) -> None:
+       """
+       Verifies each polygon in the current layer based on proximity to overhang perimeters and other criteria.
+    
+       This function checks if each polygon in a layer is within a specified distance to overhang perimeters, and if so,
+       validates them based on additional criteria like minimum area and bridge length.
+    
+       Args:
+       minDistForValidation (float): The maximum distance from overhang perimeters that a polygon can be to still be considered valid.
+    
+       Raises:
+       ValueError: If no allowed space polygon is provided to the layer object.
+       """
+       # Retrieve line strings that represent overhang perimeters
+       overhangs = self.getOverhangPerimeterLineStrings()
+    
+       # Debug print the count of overhangs if enabled
+       if len(overhangs) > 0 and self.parameters.get("PrintDebugVerification"):
+           print(f"Layer {self.layernumber}: {len(overhangs)} Overhangs found")
+       
+       # Check if the allowed space for arcs has been defined
+       allowedSpacePolygon = self.parameters.get("AllowedSpaceForArcs")
+       if not allowedSpacePolygon:
+           input(f"Layer {self.layernumber}: no allowed space Polygon provided to layer obj, unable to run script. Press Enter.")
+           raise ValueError(f"Layer {self.layernumber}: no allowed space Polygon provided to layer obj")
+       
+       # Debug print the count of polygons if enabled
+       if self.parameters.get("PrintDebugVerification"):
+           print("No of Polys:", len(self.polys))
+       
+       # Iterate through each polygon to verify validity based on specified conditions
+       for idp, poly in enumerate(self.polys):
+           # Check if polygon is geometrically valid
+           if not poly.is_valid and self.parameters.get("PrintDebugVerification"):
+               print(f"Layer {self.layernumber}: Poly{idp} is (shapely-)invalid")
+               continue
+    
+           # Check if the polygon is within the allowed space
+           if not allowedSpacePolygon.contains(poly) and self.parameters.get("CheckForAllowedSpace"):
+               if self.parameters.get("PrintDebugVerification"):
+                   print(f"Layer {self.layernumber}: Poly{idp} is not in allowedSpacePolygon")
+               continue
+    
+           # Check if the polygon meets the minimum area requirement
+           if poly.area < self.parameters.get("MinArea"):
+               if self.parameters.get("PrintDebugVerification"):
+                   print(f"Layer {self.layernumber}: Poly{idp} has too little area: {poly.area:.2f}")
+                   print(f'{poly = }')
+               continue
+    
+           # Evaluate the polygon's distance to overhang perimeters and validate based on min bridge length
+           for ohp in overhangs:
+               if poly.distance(ohp) < minDistForValidation:
+                   if ohp.length > self.parameters.get("MinBridgeLength"):
+                       self.validpolys.append(poly)  # Add polygon to valid list if it meets criteria
+                       self.deleteTheseInfills.append(idp)  # Schedule the infill for deletion
+                       break
+                   else:
+                       if self.parameters.get("PrintDebugVerification"):
+                           print(f'{ohp.length = } < {self.parameters.get("MinBridgeLength") = }')
+               else:
+                   if self.parameters.get("PrintDebugVerification"):
+                       print(f'{poly.distance(ohp) = } > {minDistForValidation}')
+                       print(f"Layer {self.layernumber}: Poly{idp} is not close enough to overhang perimeters")
 
 
     def prepareDeletion(self,featurename:str="Bridge",polys:list=None)->None:
