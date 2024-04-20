@@ -35,7 +35,7 @@ import warnings
 import random
 import platform
 import argparse
-from arc_library import Layer, plot_geometry, Arc
+from arc_library import Layer, plot_geometry, Arc, count_lines_in_main
 from config import makeFullSettingDict
 
 def plot_arcs_and_geometry(idx, final_arcs, arcs, remaining_space, start_line_string, start_pt):
@@ -767,4 +767,4 @@ if __name__ == "__main__":
     execution_time = end_time - start_time
     
     print(f"Execution time: {execution_time} seconds")
-
+    print(f'{count_lines_in_main() = }')

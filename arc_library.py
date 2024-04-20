@@ -6,6 +6,35 @@ import numpy as np
 import random
 from hilbert import decode, encode
 
+def count_lines_in_main():
+    filename = 'prusa_slicer_post_processing_script.py'
+    with open(filename, 'r') as file:
+        in_main = False
+        main_count = 0
+
+        for line in file:
+            stripped_line = line.strip()
+
+            # Check if we are entering the main function
+            if stripped_line.startswith("def main("):
+                in_main = True
+                continue  # Skip the function declaration line
+
+            # Check if we are exiting the main function upon encountering another function definition
+            if in_main and stripped_line.startswith("def "):
+                break  # Stop counting when another function definition is encountered
+
+            # Count lines only when we are within the main function
+            if in_main:
+                if stripped_line == "" or stripped_line.startswith("#"):
+                    continue  # Skip empty lines and comments within the main function
+                main_count += 1
+
+        return main_count
+
+
+
+
 def create_circle(p:Point, radius:float, n:int)->Polygon:
     x=p.x
     y=p.y
