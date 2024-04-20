@@ -414,7 +414,7 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
         layerobjs.append(layer)
         
     # Iterate through each layer object with its index
-    for idl, layer in enumerate(layerobjs, start=1):
+    for idl, layer in enumerate(layerobjs):
     
         # Feature extraction and processing for potential overhangs
         layer.extract_features()
@@ -640,50 +640,50 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
             # Placeholder for tracking the start of the G-code injection
             injectionStart = None
             print("modifying GCode")
+                    
+             # Iterate through each line of the current layer's G-code
+            for idline, line in enumerate(layer.lines):
+                # Skip processing if there are no valid polygons in this layer
+                if not layer.validpolys:
+                    continue
+                
+                # Look for a line containing the type of G-code section, to inject arc G-code at the start of the section
+                if ";TYPE" in line and not isInjected:
+                    injectionStart = idline  # Mark the injection start point
+                    modifiedlayer.lines.append(";TYPE:Arc infill\n")  # Indicate the start of arc infill section
+                    modifiedlayer.lines.append(f"M106 S{parameters.get('ArcFanSpeed')}\n")  # Set fan speed for arc printing
+                    
+                    # Loop through each arc G-code sequence to be injected
+                    for overhangline in arcOverhangGCode:
+                        for arcline in overhangline:
+                            for cmdline in arcline:
+                                modifiedlayer.lines.append(cmdline)  # Append each command line to the modified layer's G-code
+                    
+                    isInjected = True  # Set flag indicating that arc G-code has been injected
             
-     # Iterate through each line of the current layer's G-code
-    for idline, line in enumerate(layer.lines):
-        # Skip processing if there are no valid polygons in this layer
-        if not layer.validpolys:
-            continue
+                    # Add G-code to restore the previous tool position before the injection
+                    # Loop backwards from the injection point to find the last known tool position and append it
+                    for id in reversed(range(injectionStart)):
+                        if "X" in layer.lines[id]:  # Find a line containing tool position (assumed by presence of 'X')
+                            modifiedlayer.lines.append(layer.lines[id])  # Restore this position
+                            break
         
-        # Look for a line containing the type of G-code section, to inject arc G-code at the start of the section
-        if ";TYPE" in line and not isInjected:
-            injectionStart = idline  # Mark the injection start point
-            modifiedlayer.lines.append(";TYPE:Arc infill\n")  # Indicate the start of arc infill section
-            modifiedlayer.lines.append(f"M106 S{parameters.get('ArcFanSpeed')}\n")  # Set fan speed for arc printing
-            
-            # Loop through each arc G-code sequence to be injected
-            for overhangline in arcOverhangGCode:
-                for arcline in overhangline:
-                    for cmdline in arcline:
-                        modifiedlayer.lines.append(cmdline)  # Append each command line to the modified layer's G-code
-            
-            isInjected = True  # Set flag indicating that arc G-code has been injected
-    
-            # Add G-code to restore the previous tool position before the injection
-            # Loop backwards from the injection point to find the last known tool position and append it
-            for id in reversed(range(injectionStart)):
-                if "X" in layer.lines[id]:  # Find a line containing tool position (assumed by presence of 'X')
-                    modifiedlayer.lines.append(layer.lines[id])  # Restore this position
-                    break
-
-                                                # if layer.oldpolys:
-                                                #     if ";TYPE" in line and not hilbertIsInjected:# startpoint of solid infill: print all hilberts from here.
-                                                #         hilbertIsInjected=True
-                                                #         injectionStart=idline
-                                                #         modifiedlayer.lines.append(";TYPE:Solid infill\n")
-                                                #         modifiedlayer.lines.append(f"M106 S{parameters.get('aboveArcsFanSpeed')}\n")
-                                                #         hilbertGCode=hilbert2GCode(allhilbertpts,parameters,layer.height)
-                                                #         modifiedlayer.lines.extend(hilbertGCode)
-                                                #         #add restored pre-injected tool position
-                                                #         for id in reversed(range(injectionStart)):
-                                                #             if "X" in layer.lines[id]:
-                                                #                 modifiedlayer.lines.append(layer.lines[id])
-                                                #                 break
-                # Check for specific G-code commands to adjust settings based on line content
-                if "G1 F" in line.split(";")[0]:  # Check if the line contains a speed command, ignoring comments
-                    curPrintSpeed = line  # Update the current print speed setting
+                                                        # if layer.oldpolys:
+                                                        #     if ";TYPE" in line and not hilbertIsInjected:# startpoint of solid infill: print all hilberts from here.
+                                                        #         hilbertIsInjected=True
+                                                        #         injectionStart=idline
+                                                        #         modifiedlayer.lines.append(";TYPE:Solid infill\n")
+                                                        #         modifiedlayer.lines.append(f"M106 S{parameters.get('aboveArcsFanSpeed')}\n")
+                                                        #         hilbertGCode=hilbert2GCode(allhilbertpts,parameters,layer.height)
+                                                        #         modifiedlayer.lines.extend(hilbertGCode)
+                                                        #         #add restored pre-injected tool position
+                                                        #         for id in reversed(range(injectionStart)):
+                                                        #             if "X" in layer.lines[id]:
+                                                        #                 modifiedlayer.lines.append(layer.lines[id])
+                                                        #                 break
+                        # Check for specific G-code commands to adjust settings based on line content
+                        if "G1 F" in line.split(";")[0]:  # Check if the line contains a speed command, ignoring comments
+                            curPrintSpeed = line  # Update the current print speed setting
                 
                 # Evaluate whether the current line should be exported based on layer conditions
                 if layer.exportThisLine(idline):
