@@ -443,131 +443,166 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
     gCodeFileStream.close()
     print("layers:",len(layers))
     lastfansetting=0 # initialize variable
+    # setup layers, this should be in Layer __init__
     for idl,layerlines in enumerate(layers):
         layer=Layer(layerlines,parameters,idl)
         layer.addZ()
         layer.addHeight()
         lastfansetting=layer.spotFanSetting(lastfansetting)
         layerobjs.append(layer)
-    for idl,layer in enumerate(layerobjs):
-        modify=False
-        if idl<1:
-            continue # no overhangs in the first layer and dont mess with the setup
+        
+    # Iterate through each layer object with its index
+    for idl, layer in enumerate(layerobjs):
+        # Skip processing for the first layer
+        if idl < 1:
+            continue
     
+        # Feature extraction and processing for potential overhangs
         layer.extract_features()
         layer.spotBridgeInfill()
-        layer.makePolysFromBridgeInfill(extend=parameters.get("ExtendIntoPerimeter",1))
-        layer.polys=layer.mergePolys()
+        layer.makePolysFromBridgeInfill(extend=parameters.get("ExtendIntoPerimeter", 1))
+        layer.polys = layer.mergePolys()
         layer.verifyinfillpolys()
-
-        #ARC GENERATION
+    
+        # Skip to next iteration if no valid polygons resulted from processing
         if not layer.validpolys:
             continue
-        numOverhangs += 1
-        print(f"overhang found layer {idl}:",len(layer.polys), f"Z: {layer.z:.2f}")
-        #set special cooling settings for the follow up layers
-        maxZ=layer.z+parameters.get("specialCoolingZdist")
-        idoffset=1
-        currZ=layer.z
-        while currZ<=maxZ and idl+idoffset<=len(layerobjs)-1:
-            currZ=layerobjs[idl+idoffset].z
-            layerobjs[idl+idoffset].oldpolys.extend(layer.validpolys)
-            idoffset+=1
-
-        #make Startpoint form previous layer
-        prevLayer=layerobjs[idl-1]
-        prevLayer.makeExternalPerimeter2Polys()
-        arcOverhangGCode=[]
+        # Prepare to apply special cooling settings based on layer height
+        maxZ = layer.z + parameters.get("specialCoolingZdist")
+        idoffset = 1
+        currZ = layer.z
+    
+        # Handling overhangs by printing details and adjusting cooling on subsequent layers
+        # Loop through the following layers to apply special settings until the maxZ is reached
+        while currZ <= maxZ and idl + idoffset <= len(layerobjs) - 1:
+            # Update the current layer's Z height
+            currZ = layerobjs[idl + idoffset].z
+            # Extend old polygons of subsequent layers with valid polygons from the current layer
+            layerobjs[idl + idoffset].oldpolys.extend(layer.validpolys)
+            # Move to the next layer
+            idoffset += 1
+        # Initialize variables for tracking and processing overhangs with arc generation
+        prevLayer = layerobjs[idl-1]  # Get the previous layer to work with its geometries
+        prevLayer.makeExternalPerimeter2Polys()  # Convert external perimeters to polygons
+        
+        arcOverhangGCode = []  # List to store the G-code for arc movements over overhangs
+        
+        # Iterate over valid polygons in the current layer to generate arcs
         for poly in layer.validpolys:
-            #make parameters more readable
-            MaxDistanceFromPerimeter=parameters.get("MaxDistanceFromPerimeter") # how much 'bumpiness' you accept in the outline. Lower will generate more small arcs to follow the perimeter better (corners!). Good practice: 2 perimeters+ threshold of 2width=minimal exact touching (if rMin satisfied)
-            rMax=parameters.get("RMax",15)
-            # pointsPerCircle=parameters.get("PointsPerCircle",80)
-            arcWidth=parameters.get("ArcWidth")
-            # rMin=parameters.get("ArcCenterOffset")+arcWidth/1.5
-
+            # Retrieve parameters for arc generation
+            MaxDistanceFromPerimeter = parameters.get("MaxDistanceFromPerimeter")
+            rMax = parameters.get("RMax", 15)
+            arcWidth = parameters.get("ArcWidth")
             rMinStart = parameters.get("RMinStartMultiple") * parameters.get("nozzle_diameter")
             rMin = rMinStart
-            #initialize
-            finalarcs=[]
-            arcs=[]
-            arcs4gcode=[]
-            #find StartPoint and StartLineString
-            startLineString,boundaryWithOutStartLine=prevLayer.makeStartLineString(poly,parameters)
+        
+            # Initialization of arc-related data structures
+            finalarcs = []
+            arcs = []
+            arcs4gcode = []
+        
+            # Determine starting point for arcs based on the previous layer's perimeter
+            startLineString, boundaryWithOutStartLine = prevLayer.makeStartLineString(poly, parameters)
             if startLineString is None:
                 warnings.warn("Skipping Polygon because no StartLine Found")
                 continue
-            startpt=getStartPtOnLS(startLineString,parameters)
-            remainingSpace=poly
-            #plot_geometry(thresholdedpoly)
-            #plot_geometry(startLineString,'m')
-            #plot_geometry(startpt,'r')
-            #plt.axis('square')
-            #plt.show()
-            #first step in Arc Generation
+            startpt = getStartPtOnLS(startLineString, parameters)
+            remainingSpace = poly
+        
+            # Generate concentric arcs from the start point within defined boundaries
+            concentricArcs = generateMultipleConcentricArcs(startpt, rMinStart, rMax, boundaryWithOutStartLine, remainingSpace, parameters)
+            # Optionally, print the number of arcs generated for debugging
+            # print(f"number of concentric arcs generated:", len(concentricArcs))
 
-            concentricArcs=generateMultipleConcentricArcs(startpt,rMinStart,rMax,boundaryWithOutStartLine,remainingSpace,parameters)
-            #print(f"number of concentric arcs generated:",len(concentricArcs))
-            if len(concentricArcs)<parameters.get("MinStartArcs"):
-                #possibly bad chosen startpt, errorhandling:
-                startpt=getStartPtOnLS(redistribute_vertices(startLineString,0.1),parameters)
-                concentricArcs=generateMultipleConcentricArcs(startpt,rMinStart,rMax,boundaryWithOutStartLine,remainingSpace,parameters)
-                if len(concentricArcs)<parameters.get("MinStartArcs"):#still insuff start: try random
+            # Error handling for inadequate arc generation from the chosen starting point
+            if len(concentricArcs) < parameters.get("MinStartArcs"):
+                # Adjust the start point by redistributing vertices and retry arc generation
+                startpt = getStartPtOnLS(redistribute_vertices(startLineString, 0.1), parameters)
+                concentricArcs = generateMultipleConcentricArcs(startpt, rMinStart, rMax, boundaryWithOutStartLine, remainingSpace, parameters)
+            
+                # If the minimum number of arcs is still not met, attempt to find a new starting point randomly
+                if len(concentricArcs) < parameters.get("MinStartArcs"):
                     print(f"Layer {idl}: Using random Startpoint")
-                    for idr in range(10):
-                        startpt=getStartPtOnLS(startLineString,parameters,choseRandom=True)
-                        concentricArcs=generateMultipleConcentricArcs(startpt,rMinStart,rMax,boundaryWithOutStartLine,remainingSpace,parameters)
-                        if len(concentricArcs)>=parameters.get("MinStartArcs"):
+                    for idr in range(10):  # Try up to 10 different random start points
+                        startpt = getStartPtOnLS(startLineString, parameters, choseRandom=True)
+                        concentricArcs = generateMultipleConcentricArcs(startpt, rMinStart, rMax, boundaryWithOutStartLine, remainingSpace, parameters)
+                        if len(concentricArcs) >= parameters.get("MinStartArcs"):
                             break
-                    if len(concentricArcs)<parameters.get("MinStartArcs"):
+            
+                    # If random start points also fail, retry with redistributed vertices and random choices
+                    if len(concentricArcs) < parameters.get("MinStartArcs"):
                         for idr in range(10):
-                            startpt=getStartPtOnLS(redistribute_vertices(startLineString,0.1),parameters,choseRandom=True)
-                            concentricArcs=generateMultipleConcentricArcs(startpt,rMinStart,rMax,boundaryWithOutStartLine,remainingSpace,parameters)
-                            if len(concentricArcs)>=parameters.get("MinStartArcs"):
+                            startpt = getStartPtOnLS(redistribute_vertices(startLineString, 0.1), parameters, choseRandom=True)
+                            concentricArcs = generateMultipleConcentricArcs(startpt, rMinStart, rMax, boundaryWithOutStartLine, remainingSpace, parameters)
+                            if len(concentricArcs) >= parameters.get("MinStartArcs"):
                                 break
-                    if len(concentricArcs)<parameters.get("MinStartArcs"):
+            
+                    # Issue a warning if all attempts fail to generate a sufficient number of arcs
+                    if len(concentricArcs) < parameters.get("MinStartArcs"):
                         warnings.warn("Initialization Error: no concentric Arc could be generated at startpoints, moving on")
                         continue
-            arcBoundarys=getArcBoundarys(concentricArcs)
+
+
+            # Retrieve the boundaries of the generated concentric arcs
+            arcBoundarys = getArcBoundarys(concentricArcs)
+            # Append the last concentric arc to the list of final arcs, usually the smallest or innermost
             finalarcs.append(concentricArcs[-1])
+            
+            # Process each concentric arc to update the remaining space by subtracting the area covered by the arc
             for arc in concentricArcs:
-                remainingSpace=remainingSpace.difference(arc.poly.buffer(1e-2))
+                # Subtract the buffered polygon of the arc from the remaining space to avoid overlap in future arcs
+                remainingSpace = remainingSpace.difference(arc.poly.buffer(1e-2))
+                # Collect all arcs for potential use or reference
                 arcs.append(arc)
+            
+            # Collect the boundaries of arcs to prepare for generating G-code instructions
             for arcboundary in arcBoundarys:
                 arcs4gcode.append(arcboundary)
 
-            #start bfs (breadth first search algorithm) to fill the remainingspace
-            idx=0
-            safetyBreak=0
-            triedFixing=False
-            while idx<len(finalarcs):
-                sys.stdout.write("\033[F") #back to previous line
-                sys.stdout.write("\033[K") #clear line
-                print("while executed:",idx, len(finalarcs))#\r=Cursor at linestart
-                curArc=finalarcs[idx]
-                if curArc.poly.geom_type=="MultiPolygon":
-                    farthestPointOnArc,longestDistance,NearestPointOnPoly=get_farthest_point(curArc.poly.geoms[0],poly,remainingSpace)
+            # Start a breadth-first search (BFS) to fill the remaining space using arc information
+            idx = 0
+            safetyBreak = 0
+            triedFixing = False
+            
+            while idx < len(finalarcs):
+                # Console output management to update status in the same line
+                sys.stdout.write("\033[F")  # Move back to the previous line
+                sys.stdout.write("\033[K")  # Clear the current line
+                print("while executed:", idx, len(finalarcs))  # Display current loop execution status
+            
+                curArc = finalarcs[idx]
+                # Determine the farthest point on the arc from remaining space and check for MultiPolygon geometry
+                if curArc.poly.geom_type == "MultiPolygon":
+                    farthestPointOnArc, longestDistance, NearestPointOnPoly = get_farthest_point(curArc.poly.geoms[0], poly, remainingSpace)
                 else:
-                    farthestPointOnArc,longestDistance,NearestPointOnPoly=get_farthest_point(curArc.poly,poly,remainingSpace)
-                if not farthestPointOnArc or longestDistance<MaxDistanceFromPerimeter:#no more pts on arc
-                    idx+=1 #go to next arc
+                    farthestPointOnArc, longestDistance, NearestPointOnPoly = get_farthest_point(curArc.poly, poly, remainingSpace)
+            
+                # Check if any viable points are left on the arc; if not, move to the next one
+                if not farthestPointOnArc or longestDistance < MaxDistanceFromPerimeter:
+                    idx += 1  # Go to next arc
                     continue
-                startpt=move_toward_point(farthestPointOnArc,curArc.center,parameters.get("ArcCenterOffset",2))
-                concentricArcs=generateMultipleConcentricArcs(startpt,rMin,rMax,poly.boundary,remainingSpace,parameters)
-                arcBoundarys=getArcBoundarys(concentricArcs)
-                #print(f"number of concentric arcs generated:",len(concentricArcs))
-                if len(concentricArcs)>0:
+            
+                # Adjust the start point towards the arc center to create new concentric arcs
+                startpt = move_toward_point(farthestPointOnArc, curArc.center, parameters.get("ArcCenterOffset", 2))
+                concentricArcs = generateMultipleConcentricArcs(startpt, rMin, rMax, poly.boundary, remainingSpace, parameters)
+                arcBoundarys = getArcBoundarys(concentricArcs)
+            
+                # If concentric arcs are generated successfully, update structures and remaining space
+                if len(concentricArcs) > 0:
                     for arc in concentricArcs:
-                        remainingSpace=remainingSpace.difference(arc.poly.buffer(1e-2))
+                        remainingSpace = remainingSpace.difference(arc.poly.buffer(1e-2))
                         arcs.append(arc)
                     finalarcs.append(concentricArcs[-1])
                     for arcboundary in arcBoundarys:
                         arcs4gcode.append(arcboundary)
                 else:
-                    idx+=1 # no possible concentric arcs found= arc complete, proceed to next
-                safetyBreak+=1
-                if safetyBreak>parameters.get("SafetyBreak_MaxArcNumber",2000):
+                    idx += 1  # No possible concentric arcs found; arc is complete, proceed to next
+            
+                # Implement a safety break to avoid infinite loops
+                safetyBreak += 1
+                if safetyBreak > parameters.get("SafetyBreak_MaxArcNumber", 2000):
                     break
+
                 if parameters.get("plotArcsEachStep"):
                     plt.title(f"Iteration {idx}, Total No Start Points: {len(finalarcs)}, Total No Arcs: {len(arcs)}")
                     plot_geometry(startLineString,'r')
@@ -576,20 +611,26 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
                     plot_geometry(startpt,"r")
                     plt.axis('square')
                     plt.show()
+                # Check conditions to identify if arc generation is stuck at the beginning
+                if len(finalarcs) == 1 and idx == 1 and remainingSpace.area / poly.area * 100 > 50 and not triedFixing:
+                    # Automated fix for situations where arc generation is stuck at a tight spot during the initial steps
+                    parameters["ArcCenterOffset"] = 0  # Reset the ArcCenterOffset to zero to allow for tighter arc starts
+                    rMin = arcWidth / 1.5  # Adjust minimum radius based on the arc width
+                    idx = 0  # Reset index to reattempt arc generation from the start
+                    triedFixing = True  # Mark that a fixing attempt has been made
+                    print("the arc-generation got stuck at a tight spot during startup. Used Automated fix: set ArcCenterOffset to 0")
+                
+                # If a fix was attempted and still only one arc has been generated and the problem persists, notify failure
+                if triedFixing and len(finalarcs) == 1 and idx == 1:
+                    print("fix did not work.")  # Print failure message if the automated fix did not resolve the issue
+                
+                # Indicate that processing for the current polygon is complete
 
-                if len(finalarcs)==1 and idx==1 and remainingSpace.area/poly.area*100>50 and not triedFixing:
-                    #error handling: the arc-generation got stuck at a thight spot during startup. Automated fix:
-                    parameters["ArcCenterOffset"]=0
-                    rMin=arcWidth/1.5
-                    idx=0
-                    triedFixing=True
-                    print("the arc-generation got stuck at a thight spot during startup. Used Automated fix:set ArcCenterOffset to 0")
-                if triedFixing and len(finalarcs)==1 and idx==1:
-                    print("fix did not work.")
-            #poly finished
+
             remain2FillPercent=remainingSpace.area/poly.area*100
             if  remain2FillPercent> 100-parameters.get("WarnBelowThisFillingPercentage"):
                 warnings.warn(f"layer {idl}: The Overhang Area is only {100-remain2FillPercent:.0f}% filled with Arcs. Please try again with adapted Parameters: set 'ExtendIntoPerimeter' higher to enlargen small areas. lower the MaxDistanceFromPerimeter to follow the curvature more precise. Set 'ArcCenterOffset' to 0 to reach delicate areas. ")
+
             if parameters.get("plotArcsFinal"):
                 plt.title(f"Iteration {idx}, Total No Start Points: {len(finalarcs)}, Total No Arcs: {len(arcs)}")
                 plot_geometry(startLineString,'r')
@@ -598,107 +639,146 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
                 plot_geometry(startpt,"r")
                 plt.axis('square')
                 plt.show()
-            #generate gcode for arc and insert at the beginning of the layer
-            eStepsPerMM=calcEStepsPerMM(parameters)
-            arcOverhangGCode.append(f"M106 S{np.round(parameters.get('bridge_fan_speed',100)*2.55)}\n")#turn cooling Fan on at Bridge Setting
-            #for arc in arcs4gcode:
-            #    plot_geometry(arc)
-            #    plot_geometry(Point(arc.coords[0]))
-            #plt.axis('square')
-            #plt.show()
-            arcs4gcode = [x for x in arcs4gcode if not x.is_empty]
-            for ida,arc in enumerate(arcs4gcode):
-                final_arc = ida == len(arcs4gcode) - 1
-                if not arc.is_empty:
 
-                    arcGCode=arc2GCode(arcline=arc,eStepsPerMM=eStepsPerMM,arcidx=ida,final_arc=final_arc,kwargs=parameters)
-                    arcOverhangGCode.append(arcGCode)
-                    if parameters.get("TimeLapseEveryNArcs")>0:
-                        if ida%parameters.get("TimeLapseEveryNArcs"):
-                            arcOverhangGCode.append("M240\n")
-
-            modify=True
-            gcodeWasModified=True
-
-        # #apply special cooling settings:
-        # if len(layer.oldpolys)>0 and gcodeWasModified:
-        #     modify=True
-        #     print("oldpolys found in layer:",idl)
-        #     layer.spotSolidInfill()
-        #     layer.makePolysFromSolidInfill(extend=parameters.get("ExtendIntoPerimeter"))
-        #     layer.solidPolys=layer.mergePolys(layer.solidPolys)
-        #     allhilbertpts=[]
-        #     for poly in layer.solidPolys:
-        #         hilbertpts=layer.createHilbertCurveInPoly(poly)
-        #         allhilbertpts.extend(hilbertpts)
-        #         if parameters.get("plotEachHilbert"):
-        #             plot_geometry(hilbertpts,changecolor=True)
-        #             plot_geometry(layer.solidPolys)
-        #             plt.title("Debug")
-        #             plt.axis('square')
-        #             plt.show()
-        if modify:
-            modifiedlayer=Layer([],parameters,idl) # copy the other infos if needed: future to do
-            isInjected=False
-            # hilbertIsInjected=False
-            curPrintSpeed="G1 F600"
-            messedWithSpeed=False
-            messedWithFan=False
-            if gcodeWasModified:
-                layer.prepareDeletion(featurename="Bridge",polys=layer.validpolys)
-                if len(layer.oldpolys)>0:
-                    layer.prepareDeletion(featurename=":Solid",polys=layer.oldpolys)
-            #print("FEATURES:",[(f[0],f[2]) for f in layer.features])
-            injectionStart=None
-            print("modifying GCode")
-            for idline,line in enumerate(layer.lines):
-                if not layer.validpolys: continue
+            # Calculate extruder steps per millimeter based on given parameters
+            eStepsPerMM = calcEStepsPerMM(parameters)
+            # Add a command to turn on the cooling fan to the specified speed for bridge settings
+            arcOverhangGCode.append(f"M106 S{np.round(parameters.get('bridge_fan_speed',100)*2.55)}\n")
             
-                if ";TYPE" in line and not isInjected:#inject arcs at the very start
-                    injectionStart=idline
-                    modifiedlayer.lines.append(";TYPE:Arc infill\n")
-                    modifiedlayer.lines.append(f"M106 S{parameters.get('ArcFanSpeed')}\n")
-                    for overhangline in arcOverhangGCode:
-                        for arcline in overhangline:
-                            for cmdline in arcline:
-                                modifiedlayer.lines.append(cmdline)
-                    isInjected=True
-                    #add restored pre-injected tool position
-                    for id in reversed(range(injectionStart)):
-                        if "X" in layer.lines[id]:
-                            modifiedlayer.lines.append(layer.lines[id])
-                            break
-                # if layer.oldpolys:
-                #     if ";TYPE" in line and not hilbertIsInjected:# startpoint of solid infill: print all hilberts from here.
-                #         hilbertIsInjected=True
-                #         injectionStart=idline
-                #         modifiedlayer.lines.append(";TYPE:Solid infill\n")
-                #         modifiedlayer.lines.append(f"M106 S{parameters.get('aboveArcsFanSpeed')}\n")
-                #         hilbertGCode=hilbert2GCode(allhilbertpts,parameters,layer.height)
-                #         modifiedlayer.lines.extend(hilbertGCode)
-                #         #add restored pre-injected tool position
-                #         for id in reversed(range(injectionStart)):
-                #             if "X" in layer.lines[id]:
-                #                 modifiedlayer.lines.append(layer.lines[id])
-                #                 break
-                if "G1 F" in line.split(";")[0]:#special block-speed-command
-                    curPrintSpeed=line
+            # Filter out any empty geometries before generating G-code
+            arcs4gcode = [x for x in arcs4gcode if not x.is_empty]
+            
+            # Iterate over the arcs to generate G-code for each
+            for ida, arc in enumerate(arcs4gcode):
+                final_arc = ida == len(arcs4gcode) - 1  # Check if this is the final arc in the sequence
+                if not arc.is_empty:
+                    # Generate G-code for each arc and append to the list
+                    arcGCode = arc2GCode(arcline=arc, eStepsPerMM=eStepsPerMM, arcidx=ida, final_arc=final_arc, kwargs=parameters)
+                    arcOverhangGCode.append(arcGCode)
+                    
+                    # Optionally add a command for time-lapse photography after every specified number of arcs
+                    if parameters.get("TimeLapseEveryNArcs") > 0:
+                        if ida % parameters.get("TimeLapseEveryNArcs") == 0:
+                            arcOverhangGCode.append("M240\n")  # Command to take a photo
+            
+            # Indicate that modifications have been made to the G-code and that the G-code was successfully modified
+            modify = True
+            gcodeWasModified = True
+                    
+                            # #apply special cooling settings:
+                            # if len(layer.oldpolys)>0 and gcodeWasModified:
+                            #     modify=True
+                            #     print("oldpolys found in layer:",idl)
+                            #     layer.spotSolidInfill()
+                            #     layer.makePolysFromSolidInfill(extend=parameters.get("ExtendIntoPerimeter"))
+                            #     layer.solidPolys=layer.mergePolys(layer.solidPolys)
+                            #     allhilbertpts=[]
+                            #     for poly in layer.solidPolys:
+                            #         hilbertpts=layer.createHilbertCurveInPoly(poly)
+                            #         allhilbertpts.extend(hilbertpts)
+                            #         if parameters.get("plotEachHilbert"):
+                            #             plot_geometry(hilbertpts,changecolor=True)
+                            #             plot_geometry(layer.solidPolys)
+                            #             plt.title("Debug")
+                            #             plt.axis('square')
+                            #             plt.show()
+                       # Check if modifications have been flagged for the current layer
+        if modify:
+            # Create a new Layer instance with empty features and other necessary parameters
+            modifiedlayer = Layer([], parameters, idl)  # Future task: copy additional info as needed
+            
+            # Initialize variables for tracking the state of G-code injections
+            isInjected = False
+            # Variable for tracking hilbert pattern injection; commented as it may be part of future work
+            # hilbertIsInjected = False
+            curPrintSpeed = "G1 F600"  # Set a default printing speed
+            messedWithSpeed = False  # Flag to check if the print speed has been changed
+            messedWithFan = False  # Flag to check if the fan settings have been changed
+            
+            # If G-code was flagged as modified, prepare to update the layer's G-code
+            if gcodeWasModified:
+                # Remove the 'Bridge' features from the layer based on valid polygons
+                layer.prepareDeletion(featurename="Bridge", polys=layer.validpolys)
+                # Check if there are old polygons and prepare to remove 'Solid' features
+                if len(layer.oldpolys) > 0:
+                    layer.prepareDeletion(featurename=":Solid", polys=layer.oldpolys)
+            
+            # Placeholder for tracking the start of the G-code injection
+            injectionStart = None
+            print("modifying GCode")
+            
+     # Iterate through each line of the current layer's G-code
+    for idline, line in enumerate(layer.lines):
+        # Skip processing if there are no valid polygons in this layer
+        if not layer.validpolys:
+            continue
+        
+        # Look for a line containing the type of G-code section, to inject arc G-code at the start of the section
+        if ";TYPE" in line and not isInjected:
+            injectionStart = idline  # Mark the injection start point
+            modifiedlayer.lines.append(";TYPE:Arc infill\n")  # Indicate the start of arc infill section
+            modifiedlayer.lines.append(f"M106 S{parameters.get('ArcFanSpeed')}\n")  # Set fan speed for arc printing
+            
+            # Loop through each arc G-code sequence to be injected
+            for overhangline in arcOverhangGCode:
+                for arcline in overhangline:
+                    for cmdline in arcline:
+                        modifiedlayer.lines.append(cmdline)  # Append each command line to the modified layer's G-code
+            
+            isInjected = True  # Set flag indicating that arc G-code has been injected
+    
+            # Add G-code to restore the previous tool position before the injection
+            # Loop backwards from the injection point to find the last known tool position and append it
+            for id in reversed(range(injectionStart)):
+                if "X" in layer.lines[id]:  # Find a line containing tool position (assumed by presence of 'X')
+                    modifiedlayer.lines.append(layer.lines[id])  # Restore this position
+                    break
+
+                                                # if layer.oldpolys:
+                                                #     if ";TYPE" in line and not hilbertIsInjected:# startpoint of solid infill: print all hilberts from here.
+                                                #         hilbertIsInjected=True
+                                                #         injectionStart=idline
+                                                #         modifiedlayer.lines.append(";TYPE:Solid infill\n")
+                                                #         modifiedlayer.lines.append(f"M106 S{parameters.get('aboveArcsFanSpeed')}\n")
+                                                #         hilbertGCode=hilbert2GCode(allhilbertpts,parameters,layer.height)
+                                                #         modifiedlayer.lines.extend(hilbertGCode)
+                                                #         #add restored pre-injected tool position
+                                                #         for id in reversed(range(injectionStart)):
+                                                #             if "X" in layer.lines[id]:
+                                                #                 modifiedlayer.lines.append(layer.lines[id])
+                                                #                 break
+                # Check for specific G-code commands to adjust settings based on line content
+                if "G1 F" in line.split(";")[0]:  # Check if the line contains a speed command, ignoring comments
+                    curPrintSpeed = line  # Update the current print speed setting
+                
+                # Evaluate whether the current line should be exported based on layer conditions
                 if layer.exportThisLine(idline):
-                    if layer.isClose2Bridging(line,parameters.get("CoolingSettingDetectionDistance")):
+                    # Adjust print settings if the line is close to bridging areas
+                    if layer.isClose2Bridging(line, parameters.get("CoolingSettingDetectionDistance")):
+                        # Modify fan speed for optimal cooling during bridging, if not already done
                         if not messedWithFan:
                             modifiedlayer.lines.append(f"M106 S{parameters.get('aboveArcsFanSpeed')}\n")
-                            messedWithFan=True
-                        modline=line.strip("\n")+ f" F{parameters.get('aboveArcsPerimeterPrintSpeed')}\n"
+                            messedWithFan = True
+                
+                        # Append modified line with updated print speed for areas above arcs
+                        modline = line.strip("\n") + f" F{parameters.get('aboveArcsPerimeterPrintSpeed')}\n"
                         modifiedlayer.lines.append(modline)
-                        messedWithSpeed=True
+                        messedWithSpeed = True
                     else:
+                        # Reset fan speed to original if specific layer-wide settings are not applied
                         if messedWithFan and not parameters.get("applyAboveFanSpeedToWholeLayer"):
                             modifiedlayer.lines.append(f"M106 S{layer.fansetting:.0f}\n")
-                            messedWithFan=False
+                            messedWithFan = False
+                        
+                        # Revert to the original print speed if it was changed
                         if messedWithSpeed:
-                            modifiedlayer.lines.append(curPrintSpeed+"\n")
-                            messedWithSpeed=False
+                            modifiedlayer.lines.append(curPrintSpeed + "\n")
+                            messedWithSpeed = False
+                        
+                        # Append the original line to the modified layer after any necessary adjustments
                         modifiedlayer.lines.append(line)
+                        
+                        
             if messedWithFan:
                 modifiedlayer.lines.append(f"M106 S{layer.fansetting:.0f}\n")
                 messedWithFan=False
