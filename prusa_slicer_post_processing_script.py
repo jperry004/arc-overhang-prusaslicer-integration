@@ -163,56 +163,6 @@ def get_farthest_point(arc, base_poly, remaining_empty_space):
         return None, None, None
 
 
-def old_get_farthest_point(arc:Polygon, base_poly:Polygon, remaining_empty_space:Polygon):#function ported from Steven McCulloch
-    """
-    Find the point on a given arc that is farthest away from the base polygon.
-    In other words, the point on which the largest circle can be drawn without going outside the base polygon.
-    Parameters
-    ----------
-    arc: Polygon
-        The arc in question
-    base_poly: Polygon
-        The base polygon
-    remaining_empty_space: Polygon
-        The polygon representing the space left to be filled in the base polygon
-    Returns
-    -------
-    farthest_point: Point
-        The point on the arc that is farthest away from the base polygon
-    longest_distance: float
-        How far away the polygon is from the farthest point
-    point_on_poly: Point
-        The point on the base polygon that is closest to the arc
-    """
-    longest_distance = -1
-    farthest_point = Point([0, 0])
-    pointFound=False
-    # Handle input for polygons and LineString
-    # The first arc begins on a LineString rather than a Polygon
-    if arc.geom_type == 'Polygon':
-        arc_coords = arc.exterior.coords
-    elif arc.geom_type == 'LineString':
-        arc_coords = np.linspace(list(arc.coords)[0], list(arc.coords)[1])
-    else:
-        print('get_farthest_distance: Wrong shape type given',type(arc))
-        plt.title("Function get_farthest_point went wrong")
-        plot_geometry(base_poly,"b")
-        plot_geometry(arc,"r")
-        plt.axis('square')
-        plt.show()
-    # For every point in the arc, find out which point is farthest away from the base polygon
-    for p in list(arc_coords):
-        distance = Point(p).distance(base_poly.boundary)
-        if (distance > longest_distance) and ((remaining_empty_space.buffer(1e-2).contains(Point(p)))):
-            longest_distance = distance
-            farthest_point = Point(p)
-            pointFound = True
-    point_on_poly = nearest_points(base_poly, farthest_point)[0]
-    if pointFound:
-        return farthest_point, longest_distance, point_on_poly
-    else:
-        return None, None, None
-
 def move_toward_point(start_point:Point, target_point:Point, distance:float)->Point:
     """Moves a point a set distance toward another point"""
 
@@ -705,15 +655,9 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
             layerobjs[idl]=modifiedlayer  # overwrite the infos
 
     if gcodeWasModified:
-        overwrite=True
-        if parameters.get("Path2Output"):
-            path2GCode=parameters.get("Path2Output")
-            overwrite=False
+        path2GCode=parameters.get("Path2Output")
         f=open(path2GCode,"w")
-        if overwrite:
-            print("overwriting file")
-        else:
-            print("write to",path2GCode)
+        print("write to",path2GCode)
         for layer in layerobjs:
             f.writelines(layer.lines)
         print('\nAdding settings')
@@ -721,12 +665,12 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
         for k,v in parameters.items():
             f.write(f'\n;{k}: {v}')
         f.close()
+    
     else:
         if numOverhangs > 0:
             print(f"Found {numOverhangs} overhangs, but no arcs could be generated due to unusual geometry.")
         else:
             print(f"Analysed {len(layerobjs)} Layers, but no matching overhangs found->no arcs generated. If unexpected: look if restricting settings like 'minArea' or 'MinBridgeLength' are correct.")
-    #os.startfile(path2GCode, 'open')
     print("Script execution complete.")
     if not skipInput:
         input("Press enter to exit.")
