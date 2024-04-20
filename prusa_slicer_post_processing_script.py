@@ -403,12 +403,10 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
         warnings.warn("Incompatible PursaSlicer-Settings used!")
         input("Can not run script, gcode unmodified. Press enter to close.")
         raise ValueError("Incompatible Settings used!")
-    layerobjs=[]
-    gcodeWasModified=False
-    numOverhangs=0
+    layerobjs=[]; gcodeWasModified=False; numOverhangs=0
     if not gCodeFileStream:
-        pass
-    
+        print('No file found')
+        sys.exit()
     layers=splitGCodeIntoLayers(gCodeLines)
     gCodeFileStream.close()
     print("layers:",len(layers))
@@ -460,16 +458,9 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
         # Iterate over valid polygons in the current layer to generate arcs
         for poly in layer.validpolys:
             # Retrieve parameters for arc generation
-            MaxDistanceFromPerimeter = parameters.get("MaxDistanceFromPerimeter")
-            rMax = parameters.get("RMax", 15)
-            arcWidth = parameters.get("ArcWidth")
-            rMinStart = parameters.get("RMinStartMultiple") * parameters.get("nozzle_diameter")
-            rMin = rMinStart
-        
-            # Initialization of arc-related data structures
-            finalarcs = []
-            arcs = []
-            arcs4gcode = []
+            MaxDistanceFromPerimeter = parameters.get("MaxDistanceFromPerimeter"); rMax = parameters.get("RMax", 15); 
+            arcWidth = parameters.get("ArcWidth"); rMinStart = parameters.get("RMinStartMultiple") * parameters.get("nozzle_diameter"); 
+            rMin = rMinStart; finalarcs = []; arcs = []; arcs4gcode = []
         
             # Determine starting point for arcs based on the previous layer's perimeter
             startLineString, boundaryWithOutStartLine = prevLayer.makeStartLineString(poly, parameters)
@@ -530,9 +521,9 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
                 arcs4gcode.append(arcboundary)
 
             # Start a breadth-first search (BFS) to fill the remaining space using arc information
-            idx = 0
-            safetyBreak = 0
-            triedFixing = False
+            # Initialize indices and flags for control flow and error handling
+            idx = 0; safetyBreak = 0; triedFixing = False
+
             
             while idx < len(finalarcs):
                 # Console output management to update status in the same line
@@ -579,10 +570,8 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
                 # Check conditions to identify if arc generation is stuck at the beginning
                 if len(finalarcs) == 1 and idx == 1 and remainingSpace.area / poly.area * 100 > 50 and not triedFixing:
                     # Automated fix for situations where arc generation is stuck at a tight spot during the initial steps
-                    parameters["ArcCenterOffset"] = 0  # Reset the ArcCenterOffset to zero to allow for tighter arc starts
-                    rMin = arcWidth / 1.5  # Adjust minimum radius based on the arc width
-                    idx = 0  # Reset index to reattempt arc generation from the start
-                    triedFixing = True  # Mark that a fixing attempt has been made
+                    # Reset parameters and index for arc generation retry
+                    parameters["ArcCenterOffset"] = 0; rMin = arcWidth / 1.5; idx = 0; triedFixing = True  
                     print("the arc-generation got stuck at a tight spot during startup. Used Automated fix: set ArcCenterOffset to 0")
                 
                 # If a fix was attempted and still only one arc has been generated and the problem persists, notify failure
@@ -621,8 +610,7 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
                             arcOverhangGCode.append("M240\n")  # Command to take a photo
             
             # Indicate that modifications have been made to the G-code and that the G-code was successfully modified
-            modify = True
-            gcodeWasModified = True
+            modify = True; gcodeWasModified = True
                     
                             # #apply special cooling settings:
                             # if len(layer.oldpolys)>0 and gcodeWasModified:
@@ -644,16 +632,10 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
                        # Check if modifications have been flagged for the current layer
         if modify:
             # Create a new Layer instance with empty features and other necessary parameters
-            modifiedlayer = Layer([], parameters, idl)  # Future task: copy additional info as needed
-            
-            # Initialize variables for tracking the state of G-code injections
-            isInjected = False
-            # Variable for tracking hilbert pattern injection; commented as it may be part of future work
-            # hilbertIsInjected = False
-            curPrintSpeed = "G1 F600"  # Set a default printing speed
-            messedWithSpeed = False  # Flag to check if the print speed has been changed
-            messedWithFan = False  # Flag to check if the fan settings have been changed
-            
+            modifiedlayer = Layer([], parameters, idl)  
+            # Initialize state variables for G-code injection
+            isInjected = False; curPrintSpeed = "G1 F600"; messedWithSpeed = False; messedWithFan = False  
+
             # If G-code was flagged as modified, prepare to update the layer's G-code
             if gcodeWasModified:
                 # Remove the 'Bridge' features from the layer based on valid polygons
