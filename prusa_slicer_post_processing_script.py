@@ -38,6 +38,26 @@ import argparse
 from arc_library import Layer, plot_geometry, Arc
 from config import makeFullSettingDict
 
+def plot_arcs_and_geometry(idx, final_arcs, arcs, remaining_space, start_line_string, start_pt):
+    """
+    Plot arcs and other geometric data for visualization.
+
+    Args:
+    idx (int): Current iteration index.
+    final_arcs (list): List of final arc geometries.
+    arcs (list): List of current arc geometries.
+    remaining_space (Geometry): The remaining geometric space.
+    start_line_string (Geometry): The starting line string geometry.
+    start_pt (Geometry): The starting point geometry.
+    plot_params (dict): Dictionary of plotting parameters.
+    """
+    plt.title(f"Iteration {idx}, Total No Start Points: {len(final_arcs)}, Total No Arcs: {len(arcs)}")
+    plot_geometry(start_line_string, 'r')
+    plot_geometry([arc.poly for arc in arcs], changecolor=True)
+    plot_geometry(remaining_space, 'g', filled=True)
+    plot_geometry(start_pt, "r")
+    plt.axis('square')
+    plt.show()
 
 
 def getFileStreamAndPath(args, read=True):
@@ -554,13 +574,8 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
                     break
 
                 if parameters.get("plotArcsEachStep"):
-                    plt.title(f"Iteration {idx}, Total No Start Points: {len(finalarcs)}, Total No Arcs: {len(arcs)}")
-                    plot_geometry(startLineString,'r')
-                    plot_geometry([arc.poly for arc in arcs],changecolor=True)
-                    plot_geometry(remainingSpace,'g',filled=True)
-                    plot_geometry(startpt,"r")
-                    plt.axis('square')
-                    plt.show()
+                    plot_arcs_and_geometry(idx, finalarcs, arcs, remainingSpace, startLineString, startpt)
+                
                 # Check conditions to identify if arc generation is stuck at the beginning
                 if len(finalarcs) == 1 and idx == 1 and remainingSpace.area / poly.area * 100 > 50 and not triedFixing:
                     # Automated fix for situations where arc generation is stuck at a tight spot during the initial steps
@@ -582,13 +597,7 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
                 warnings.warn(f"layer {idl}: The Overhang Area is only {100-remain2FillPercent:.0f}% filled with Arcs. Please try again with adapted Parameters: set 'ExtendIntoPerimeter' higher to enlargen small areas. lower the MaxDistanceFromPerimeter to follow the curvature more precise. Set 'ArcCenterOffset' to 0 to reach delicate areas. ")
 
             if parameters.get("plotArcsFinal"):
-                plt.title(f"Iteration {idx}, Total No Start Points: {len(finalarcs)}, Total No Arcs: {len(arcs)}")
-                plot_geometry(startLineString,'r')
-                plot_geometry([arc.poly for arc in arcs],changecolor=True)
-                plot_geometry(remainingSpace,'g',filled=True)
-                plot_geometry(startpt,"r")
-                plt.axis('square')
-                plt.show()
+                plot_arcs_and_geometry(idx, finalarcs, arcs, remainingSpace, startLineString, startpt)
 
             # Calculate extruder steps per millimeter based on given parameters
             eStepsPerMM = calcEStepsPerMM(parameters)
