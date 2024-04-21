@@ -127,6 +127,7 @@ def makePolygonFromGCode(lines:list)->Polygon:
         return None
 
 class Layer():
+    # TODO: fix kwargs?
     def __init__(self,lines:list=[],kwargs:dict={},layernumber:int=-1)->None:
         self.lines=lines
         self.layernumber=layernumber
@@ -144,6 +145,16 @@ class Layer():
         self.sinfills=[]
         self.parameters=kwargs
         self.lastP=None
+        self.addZ()
+        self.addHeight()
+
+        # Feature extraction and processing for potential overhangs
+        self.extract_features()
+        self.spotBridgeInfill()
+        self.makePolysFromBridgeInfill(extend=kwargs.get("ExtendIntoPerimeter", 1))
+        self.polys = self.mergePolys()
+        self.verifyinfillpolys()
+        
     def extract_features(self)->None:
         buff=[]
         currenttype=""

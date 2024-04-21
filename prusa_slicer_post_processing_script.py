@@ -1,3 +1,4 @@
+#!/usr/bin/python
 """
 This script generates Overhangs by stringing together Arcs, allowing successful fdm-3d-printing of large 90 deg overhangs!
 The genius idea emerged from Steven McCulloch, who coded a demonstration and the basic mechanics: https://github.com/stmcculloch/arc-overhang
@@ -23,9 +24,9 @@ Known issues:
 -MaxDistanceFromPerimeter >=2*perimeterwidth might give a weird result.
 -avoid using the code multiple times onto the same gcode, since the bridge infill is deleted when the arcs are generated.
 """
-#!/usr/bin/python
 import sys
 import json
+import time
 from shapely import Point, Polygon, LineString
 from shapely.ops import nearest_points
 import matplotlib.pyplot as plt
@@ -398,31 +399,22 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
         warnings.warn("Incompatible PursaSlicer-Settings used!")
         input("Can not run script, gcode unmodified. Press enter to close.")
         raise ValueError("Incompatible Settings used!")
-    layerobjs=[]; gcodeWasModified=False; numOverhangs=0; lastfansetting=0
+    layerobjs=[]; gcodeWasModified=False; numOverhangs=0; lastfansetting=127;
     if not gCodeFileStream:
         print('No file found')
         sys.exit()
     layers=splitGCodeIntoLayers(gCodeLines)
     gCodeFileStream.close()
     print("layers:",len(layers))
-    # setup layers, this should be in Layer __init__
+    # setup layer objects for layers
     for idl,layerlines in enumerate(layers):
         layer=Layer(layerlines,parameters,idl)
-        layer.addZ()
-        layer.addHeight()
         lastfansetting=layer.spotFanSetting(lastfansetting)
         layerobjs.append(layer)
         
     # Iterate through each layer object with its index
     for idl, layer in enumerate(layerobjs):
-    
-        # Feature extraction and processing for potential overhangs
-        layer.extract_features()
-        layer.spotBridgeInfill()
-        layer.makePolysFromBridgeInfill(extend=parameters.get("ExtendIntoPerimeter", 1))
-        layer.polys = layer.mergePolys()
-        layer.verifyinfillpolys()
-    
+
         # Skip to next iteration if no valid polygons resulted from processing
         # validpolys are overhangs that will be converted to arcs
         # old geom. will be deleted of the poly
@@ -471,32 +463,55 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
             # print(f"number of concentric arcs generated:", len(concentricArcs))
 
             # Error handling for inadequate arc generation from the chosen starting point
-            if len(concentricArcs) < parameters.get("MinStartArcs"):
-                # Adjust the start point by redistributing vertices and retry arc generation
-                startpt = getStartPtOnLS(redistribute_vertices(startLineString, 0.1), parameters)
-                concentricArcs = generateMultipleConcentricArcs(startpt, rMinStart, rMax, boundaryWithOutStartLine, remainingSpace, parameters)
+            attempt_count = 0; max_attempts = 20  # Define a limit to avoid infinite loops
             
-                # If the minimum number of arcs is still not met, attempt to find a new starting point randomly
-                if len(concentricArcs) < parameters.get("MinStartArcs"):
+            while len(concentricArcs) < parameters.get("MinStartArcs") and attempt_count < max_attempts:
+                if attempt_count == 0:
+                    # Initial attempt to adjust the start point by redistributing vertices
+                    startpt = getStartPtOnLS(redistribute_vertices(startLineString, 0.1), parameters)
+                elif attempt_count < 10:
+                    # Next 10 attempts: Using random start points
                     print(f"Layer {idl}: Using random Startpoint")
-                    for idr in range(10):  # Try up to 10 different random start points
-                        startpt = getStartPtOnLS(startLineString, parameters, choseRandom=True)
-                        concentricArcs = generateMultipleConcentricArcs(startpt, rMinStart, rMax, boundaryWithOutStartLine, remainingSpace, parameters)
-                        if len(concentricArcs) >= parameters.get("MinStartArcs"):
-                            break
+                    startpt = getStartPtOnLS(startLineString, parameters, choseRandom=True)
+                else:
+                    # Subsequent 10 attempts: Redistribute vertices and choose randomly
+                    startpt = getStartPtOnLS(redistribute_vertices(startLineString, 0.1), parameters, choseRandom=True)
+                
+                concentricArcs = generateMultipleConcentricArcs(startpt, rMinStart, rMax, boundaryWithOutStartLine, remainingSpace, parameters)
+                attempt_count += 1
             
-                    # If random start points also fail, retry with redistributed vertices and random choices
-                    if len(concentricArcs) < parameters.get("MinStartArcs"):
-                        for idr in range(10):
-                            startpt = getStartPtOnLS(redistribute_vertices(startLineString, 0.1), parameters, choseRandom=True)
-                            concentricArcs = generateMultipleConcentricArcs(startpt, rMinStart, rMax, boundaryWithOutStartLine, remainingSpace, parameters)
-                            if len(concentricArcs) >= parameters.get("MinStartArcs"):
-                                break
+            # Issue a warning if all attempts fail to generate a sufficient number of arcs
+            if len(concentricArcs) < parameters.get("MinStartArcs"):
+                warnings.warn("Initialization Error: no concentric Arc could be generated at startpoints, moving on")
+                continue
+
+            # # Error handling for inadequate arc generation from the chosen starting point
+            # if len(concentricArcs) < parameters.get("MinStartArcs"):
+            #     # Adjust the start point by redistributing vertices and retry arc generation
+            #     startpt = getStartPtOnLS(redistribute_vertices(startLineString, 0.1), parameters)
+            #     concentricArcs = generateMultipleConcentricArcs(startpt, rMinStart, rMax, boundaryWithOutStartLine, remainingSpace, parameters)
             
-                    # Issue a warning if all attempts fail to generate a sufficient number of arcs
-                    if len(concentricArcs) < parameters.get("MinStartArcs"):
-                        warnings.warn("Initialization Error: no concentric Arc could be generated at startpoints, moving on")
-                        continue
+            #     # If the minimum number of arcs is still not met, attempt to find a new starting point randomly
+            #     if len(concentricArcs) < parameters.get("MinStartArcs"):
+            #         print(f"Layer {idl}: Using random Startpoint")
+            #         for idr in range(10):  # Try up to 10 different random start points
+            #             startpt = getStartPtOnLS(startLineString, parameters, choseRandom=True)
+            #             concentricArcs = generateMultipleConcentricArcs(startpt, rMinStart, rMax, boundaryWithOutStartLine, remainingSpace, parameters)
+            #             if len(concentricArcs) >= parameters.get("MinStartArcs"):
+            #                 break
+            
+            #         # If random start points also fail, retry with redistributed vertices and random choices
+            #         if len(concentricArcs) < parameters.get("MinStartArcs"):
+            #             for idr in range(10):
+            #                 startpt = getStartPtOnLS(redistribute_vertices(startLineString, 0.1), parameters, choseRandom=True)
+            #                 concentricArcs = generateMultipleConcentricArcs(startpt, rMinStart, rMax, boundaryWithOutStartLine, remainingSpace, parameters)
+            #                 if len(concentricArcs) >= parameters.get("MinStartArcs"):
+            #                     break
+            
+            #         # Issue a warning if all attempts fail to generate a sufficient number of arcs
+            #         if len(concentricArcs) < parameters.get("MinStartArcs"):
+            #             warnings.warn("Initialization Error: no concentric Arc could be generated at startpoints, moving on")
+            #             continue
 
 
             # Retrieve the boundaries of the generated concentric arcs
@@ -586,7 +601,7 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
             # Calculate extruder steps per millimeter based on given parameters
             eStepsPerMM = calcEStepsPerMM(parameters)
             # Add a command to turn on the cooling fan to the specified speed for bridge settings
-            arcOverhangGCode.append(f"M106 S{np.round(parameters.get('bridge_fan_speed',100)*2.55)}\n")
+            arcOverhangGCode.append(f"M106 S{round(parameters.get('bridge_fan_speed',100)*2.55)}\n")
             
             # Filter out any empty geometries before generating G-code
             arcs4gcode = [x for x in arcs4gcode if not x.is_empty]
@@ -755,8 +770,6 @@ if __name__ == "__main__":
     gCodeFileStream, path2GCode = getFileStreamAndPath(args)
     # Determine whether to skip input based on the platform and command line argument
     skipInput = args.skip_input or platform.system() != "Windows"
-    # Call the main function with the arguments
-    import time
     
     # Start timing
     start_time = time.perf_counter()
