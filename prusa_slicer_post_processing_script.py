@@ -428,6 +428,8 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
         # old geom. will be deleted of the poly
         if not layer.validpolys:
             continue
+        numOverhangs += 1
+        print(f"overhang found layer {idl}:",len(layer.polys), f"Z: {layer.z:.2f}")
         # Prepare to apply special cooling settings based on layer height
         maxZ = layer.z + parameters.get("specialCoolingZdist")
         idoffset = 1
@@ -505,7 +507,7 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
             # Process each concentric arc to update the remaining space by subtracting the area covered by the arc
             for arc in concentricArcs:
                 # Subtract the buffered polygon of the arc from the remaining space to avoid overlap in future arcs
-                remainingSpace = remainingSpace.difference(arc.poly.buffer(1e-2))
+                remainingSpace = remainingSpace.difference(arc.poly.buffer(0))
                 # Collect all arcs for potential use or reference
                 arcs.append(arc)
             
