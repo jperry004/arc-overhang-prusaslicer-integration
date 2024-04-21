@@ -325,7 +325,7 @@ def retractGCode(retract:bool=True,kwargs:dict={})->str:
 def setFeedRateGCode(F:int)->str:
     return f"G1 F{F}\n"
 
-def arc2GCode(arcline:LineString,eStepsPerMM:float,arcidx=None,final_arc=None,kwargs={})->list:
+def arc2GCode(arcline:LineString,eStepsPerMM:float,arcidx=None,kwargs={})->list:
     GCodeLines=[]
     p1=None
     pts=[Point(p) for p in arcline.coords]
@@ -424,7 +424,7 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
         print(f"overhang found layer {idl}:",len(layer.polys), f"Z: {layer.z:.2f}")
         # Prepare to apply special cooling settings based on layer height
         maxZ = layer.z + parameters.get("specialCoolingZdist")
-        idoffset = 1
+        idoffset = 1 ; arcOverhangGCode = [] 
         currZ = layer.z
     
         # Handling overhangs by printing details and adjusting cooling on subsequent layers
@@ -439,8 +439,6 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
         # Initialize variables for tracking and processing overhangs with arc generation
         prevLayer = layerobjs[idl-1]  # Get the previous layer to work with its geometries
         prevLayer.makeExternalPerimeter2Polys()  # Convert external perimeters to polygons
-        
-        arcOverhangGCode = []  # List to store the G-code for arc movements over overhangs
         
         # Iterate over valid polygons in the current layer to generate arcs
         for poly in layer.validpolys:
@@ -514,8 +512,6 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
             #             continue
 
 
-            # Retrieve the boundaries of the generated concentric arcs
-            arcBoundarys = getArcBoundarys(concentricArcs)
             # Append the last concentric arc to the list of final arcs, usually the smallest or innermost
             finalarcs.append(concentricArcs[-1])
             
@@ -523,17 +519,15 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
             for arc in concentricArcs:
                 # Subtract the buffered polygon of the arc from the remaining space to avoid overlap in future arcs
                 remainingSpace = remainingSpace.difference(arc.poly.buffer(0))
-                # Collect all arcs for potential use or reference
                 arcs.append(arc)
             
+            arcBoundarys = getArcBoundarys(concentricArcs)
             # Collect the boundaries of arcs to prepare for generating G-code instructions
             for arcboundary in arcBoundarys:
                 arcs4gcode.append(arcboundary)
 
             # Start a breadth-first search (BFS) to fill the remaining space using arc information
-            # Initialize indices and flags for control flow and error handling
             idx = 0; safetyBreak = 0; triedFixing = False
-
             
             while idx < len(finalarcs):
                 # Console output management to update status in the same line
@@ -572,6 +566,7 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
                 # Implement a safety break to avoid infinite loops
                 safetyBreak += 1
                 if safetyBreak > parameters.get("SafetyBreak_MaxArcNumber", 2000):
+                    print('\nHit safety break.')
                     break
 
                 if parameters.get("plotArcsEachStep"):
@@ -608,16 +603,14 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
             
             # Iterate over the arcs to generate G-code for each
             for ida, arc in enumerate(arcs4gcode):
-                final_arc = ida == len(arcs4gcode) - 1  # Check if this is the final arc in the sequence
-                if not arc.is_empty:
-                    # Generate G-code for each arc and append to the list
-                    arcGCode = arc2GCode(arcline=arc, eStepsPerMM=eStepsPerMM, arcidx=ida, final_arc=final_arc, kwargs=parameters)
-                    arcOverhangGCode.append(arcGCode)
-                    
-                    # Optionally add a command for time-lapse photography after every specified number of arcs
-                    if parameters.get("TimeLapseEveryNArcs") > 0:
-                        if ida % parameters.get("TimeLapseEveryNArcs") == 0:
-                            arcOverhangGCode.append("M240\n")  # Command to take a photo
+                # Generate G-code for each arc and append to the list
+                arcGCode = arc2GCode(arcline=arc, eStepsPerMM=eStepsPerMM, arcidx=ida, kwargs=parameters)
+                arcOverhangGCode.append(arcGCode)
+                
+                # Optionally add a command for time-lapse photography after every specified number of arcs
+                if parameters.get("TimeLapseEveryNArcs") > 0:
+                    if ida % parameters.get("TimeLapseEveryNArcs") == 0:
+                        arcOverhangGCode.append("M240\n")  # Command to take a photo
             
             # Indicate that modifications have been made to the G-code and that the G-code was successfully modified
             modify = True; gcodeWasModified = True
@@ -679,12 +672,11 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
                     isInjected = True  # Set flag indicating that arc G-code has been injected
             
                     # Add G-code to restore the previous tool position before the injection
-                    # Loop backwards from the injection point to find the last known tool position and append it
-                    for id in reversed(range(injectionStart)):
-                        if "X" in layer.lines[id]:  # Find a line containing tool position (assumed by presence of 'X')
-                            modifiedlayer.lines.append(layer.lines[id])  # Restore this position
+                    for line2Check in reversed(layer.lines[:injectionStart]):
+                        if "X" in line2Check:
+                            modifiedlayer.lines.append(line2Check)  
                             break
-        
+
                                                         # if layer.oldpolys:
                                                         #     if ";TYPE" in line and not hilbertIsInjected:# startpoint of solid infill: print all hilberts from here.
                                                         #         hilbertIsInjected=True

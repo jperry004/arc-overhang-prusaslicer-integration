@@ -52,7 +52,7 @@ def makeFullSettingDict(gCodeSettingDict:dict) -> dict:
         #settings for easier debugging:
         "plotStart":False, # plot the detected geoemtry in the prev Layer and the StartLine for Arc-Generation, use for debugging
         "plotArcsEachStep":False, #plot arcs for every filled polygon. use for debugging
-        "plotArcsFinal":True, #plot arcs for every filled polygon, when completely filled. use for debugging
+        "plotArcsFinal":False, #plot arcs for every filled polygon, when completely filled. use for debugging
         "plotDetectedInfillPoly":False, # plot each detected overhang polygon, use for debugging.
         "plotEachHilbert":False,
         "PrintDebugVerification":False
