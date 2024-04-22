@@ -309,6 +309,31 @@ class Layer():
         return thesepolys
 
     def spotFeaturePoints(self,featureName:str,splitAtWipe=False,includeRealStartPt=False, splitAtTravel=False)->list:
+        '''
+        Analyzes features in a dataset to identify and segment points based on specified conditions.
+    
+        This function iterates over a list of features, searching for those that match the given `featureName`.
+        It can optionally split the list of points at certain conditions such as at wipe moves or travel moves.
+        Points can be gathered from command lines and optionally include real start points of the features.
+    
+        Parameters:
+            featureName (str): The name of the feature to search for within the features list.
+            splitAtWipe (bool): If True, splits the collection of points at the start of a wipe move. Defaults to False.
+            includeRealStartPt (bool): If True, includes the real start point of the feature if it's beyond the first item.
+                                       Useful when the initial positioning is critical to the processing. Defaults to False.
+            splitAtTravel (bool): If True, splits the collection of points where travel moves occur (i.e., non-extruding moves).
+                                  This helps in distinguishing between different segments of the feature. Defaults to False.
+    
+        Returns:
+            list: A list of lists, each containing the segmented points of the feature as determined by the parameters.
+    
+        Notes:
+            - This function is particularly useful in 3D printing applications where analyzing the path of the print head is crucial.
+            - The function expects `self.features` to be a list where each feature is represented as a tuple or list with at least three items:
+              the feature type, the G-code lines, and the start point.
+            - 'G1' commands in G-code are considered for point extraction unless specified as a travel move or within a wipe move block.
+        '''
+        
         parts=[]
         for idf,fe in enumerate(self.features):
             ftype=fe[0]
@@ -341,7 +366,16 @@ class Layer():
                         isWipeMove=False
                 if len(pts)>1:#fetch last one
                     parts.append(pts)
+        if not 1:
+            
+            
+            print(f'{featureName = }')
+            print(f'{self.layernumber = }')
+            
+            print(f'{parts = }')
         return parts
+    
+    
     def spotSolidInfill(self)->None:
         parts=self.spotFeaturePoints("Solid infill",splitAtTravel=True)
         for infillpts in parts:
@@ -402,8 +436,8 @@ class Layer():
 
     def getOverhangPerimeterLineStrings(self):
         parts=self.spotFeaturePoints("Overhang perimeter",includeRealStartPt=True)
-        if not parts:
-            parts=self.spotFeaturePoints("Overhang wall",includeRealStartPt=True)
+        # if not parts:
+        #     parts=self.spotFeaturePoints("Overhang wall",includeRealStartPt=True)
         if parts:
             return [LineString(pts) for pts in parts]
         else:
@@ -424,12 +458,18 @@ class Layer():
        """
        # Retrieve line strings that represent overhang perimeters
        overhangs = self.getOverhangPerimeterLineStrings()
+   
     
        # Debug print the count of overhangs if enabled
        if len(overhangs) > 0 and self.parameters.get("PrintDebugVerification"):
            print(f"Layer {self.layernumber}: {len(overhangs)} Overhangs found")
-       
-       # Check if the allowed space for arcs has been defined
+       if len(overhangs) > 0 and not self.polys:
+           print('Trying the thing')
+           self.makeExternalPerimeter2Polys()
+           epp = self.extPerimeterPolys
+           for poly in epp:
+               self.polys.append(poly)
+           # Check if the allowed space for arcs has been defined
        allowedSpacePolygon = self.parameters.get("AllowedSpaceForArcs")
        if not allowedSpacePolygon:
            input(f"Layer {self.layernumber}: no allowed space Polygon provided to layer obj, unable to run script. Press Enter.")
@@ -582,16 +622,96 @@ class Arc():
         self.parameters=kwargs
     def setPoly(self,poly:Polygon)->None:
         self.poly=poly
+
+
+
     def extractArcBoundary(self):
-        circ=create_circle(self.center,self.r,self.pointsPerCircle)
-        trueArc=self.poly.boundary.intersection(circ.boundary.buffer(1e-2))
+        # circ=create_circle(self.center,self.r,self.pointsPerCircle)
+        # trueArc=self.poly.boundary.intersection(circ.boundary.buffer(1e-2))
+        # # Create a circle and check if it's valid
+
+        circ = create_circle(self.center, self.r, self.pointsPerCircle)
+        if not circ:
+            print("Debug: circ is None")
+            return None
+        if not circ.boundary:
+            print("Debug: circ.boundary is None")
+            return None
+        
+        # Buffer the circle's boundary and check
+        buffered_boundary = circ.boundary.buffer(1e-2)
+        if buffered_boundary.is_empty:
+            print("Debug: buffered_boundary is empty")
+            return None
+        
+        # Perform the intersection and check
+        try:
+            trueArc = self.poly.boundary.intersection(buffered_boundary)
+            if trueArc.is_empty:
+                print("Debug: trueArc is empty after intersection")
+                return None
+        except Exception as e:
+            print(f"Error during intersection: {e}")
+            return None
+
+        
         if trueArc.geom_type=='MultiLineString':
             merged=linemerge(trueArc)
         elif trueArc.geom_type=='LineString':
             self.arcline=trueArc
             return trueArc
+        elif trueArc.geom_type == 'Point':
+            print('Intersection is a point')
+            print(trueArc)
+            # Create a LineString using the point and another point, e.g., the center of the circle
+            # Plotting the relevant geometries
+            from descartes import PolygonPatch
+
+            fig, ax = plt.subplots()
+
+            # Check and plot self.poly if it's a Polygon
+            if isinstance(self.poly, Polygon):
+                x, y = self.poly.exterior.xy
+                ax.fill(x, y, alpha=0.5, color='green', label='Polygon Boundary')
+            else:
+                print(f"Expected a Polygon, but got {type(self.poly).__name__}")
+    
+            # Check and plot circ if it's a Polygon
+            if isinstance(circ, Polygon):
+                x, y = circ.exterior.xy
+                ax.fill(x, y, alpha=0.5, color='blue', label='Circle')
+            else:
+                print(f"Expected a Circle Polygon, but got {type(circ).__name__}")
+
+            # Plot polygon boundary
+
+            poly_patch = PolygonPatch(self.poly, alpha=0.5, color='green')
+            ax.add_patch(poly_patch)
+            # Plot circle boundary
+            circle_patch = PolygonPatch(circ, alpha=0.5, color='blue')
+            ax.add_patch(circle_patch)
+            # Plot intersection point
+            ax.plot(trueArc.x, trueArc.y, 'ro', label='Intersection Point')
+            
+            # Adjust the plot
+            xmin, ymin, xmax, ymax = self.poly.bounds
+            ax.set_xlim(xmin - 10, xmax + 10)
+            ax.set_ylim(ymin - 10, ymax + 10)
+            ax.legend()
+            plt.title('Polygon and Circle Intersection')
+            plt.xlabel('X Coordinates')
+            plt.ylabel('Y Coordinates')
+            plt.grid(True)
+            plt.show()
+            
+            new_line = LineString([self.center, (trueArc.x, trueArc.y)])
+            
+            self.arcline = new_line
+            return new_line
+
+            
         else:
-            #print("Other Geom-Type:",trueArc.geom_type)
+            print("Other Geom-Type:",trueArc.geom_type)
             merged=linemerge(MultiLineString([l for l in trueArc.geoms if l.geom_type=='LineString']))
         if merged.geom_type=="LineString":
             self.arcline=merged

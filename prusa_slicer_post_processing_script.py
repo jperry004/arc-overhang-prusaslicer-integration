@@ -600,6 +600,7 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
             # Add a command to turn on the cooling fan to the specified speed for bridge settings
             arcOverhangGCode.append(f"M106 S{round(parameters.get('bridge_fan_speed',100)*2.55)}\n")
             
+            arcs4gcode = [x for x in arcs4gcode if x is not None]
             # Filter out any empty geometries before generating G-code
             arcs4gcode = [x for x in arcs4gcode if not x.is_empty]
             
@@ -638,6 +639,8 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
         if modify:
             # Create a new Layer instance with empty features and other necessary parameters
             modifiedlayer = Layer([], parameters, idl)  
+            modifiedlayer.lines.append(f";LAYER {modifiedlayer.layernumber}\n")  
+            
             # Initialize state variables for G-code injection
             isInjected = False; curPrintSpeed = "G1 F600"; messedWithSpeed = False; messedWithFan = False  
 
