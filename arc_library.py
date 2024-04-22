@@ -33,7 +33,30 @@ def count_lines_in_main():
         return main_count
 
 
+from descartes import PolygonPatch
 
+ # Assuming 'your_polygon' is a Shapely Polygon object you've created elsewhere in your code
+ # For example:
+ # your_polygon = Polygon([(110.257, 121.455), (110.244, 119.922), ..., (110.257, 121.455)])
+ 
+def plot_polygon(polygon):
+    # Extract exterior coordinates of the polygon
+    x, y = polygon.exterior.xy
+    
+    fig, ax = plt.subplots()
+    ax.fill(x, y, alpha=0.5, color='orange', edgecolor='black')  # Fill the polygon with a color and edge
+    
+    # Set plot limits to the bounds of your polygon, with some padding
+    x_min, y_min, x_max, y_max = polygon.bounds
+    ax.set_xlim(x_min - 1, x_max + 1)
+    ax.set_ylim(y_min - 1, y_max + 1)
+    
+    # Set aspect of the plot to be equal, so the polygon isn't skewed
+    ax.set_aspect('equal')
+    
+    plt.grid(True)
+    plt.title('Shapely Polygon Plot')
+    plt.show()
 
 def create_circle(p:Point, radius:float, n:int)->Polygon:
     x=p.x
@@ -423,7 +446,7 @@ class Layer():
             infillPts = bInfill.pts  # Retrieve the points defining the infill
             infillLS = LineString(infillPts)  # Create a LineString from the infill points
             infillPoly = infillLS.buffer(extend)  # Buffer the LineString to create a polygon
-    
+            print('appending poly', infillPoly)
             self.polys.append(infillPoly)  # Add the new polygon to the list of polygons
             self.associatedIDs.append(bInfill.id)  # Associate the infill ID with the polygon
     
@@ -468,7 +491,10 @@ class Layer():
            self.makeExternalPerimeter2Polys()
            epp = self.extPerimeterPolys
            for poly in epp:
+               print('appending dumb polu', poly)
                self.polys.append(poly)
+    
+               plot_polygon(poly)
            # Check if the allowed space for arcs has been defined
        allowedSpacePolygon = self.parameters.get("AllowedSpaceForArcs")
        if not allowedSpacePolygon:
@@ -665,45 +691,46 @@ class Arc():
             print(trueArc)
             # Create a LineString using the point and another point, e.g., the center of the circle
             # Plotting the relevant geometries
-            from descartes import PolygonPatch
+            # from descartes import PolygonPatch
 
-            fig, ax = plt.subplots()
+            # fig, ax = plt.subplots()
 
-            # Check and plot self.poly if it's a Polygon
-            if isinstance(self.poly, Polygon):
-                x, y = self.poly.exterior.xy
-                ax.fill(x, y, alpha=0.5, color='green', label='Polygon Boundary')
-            else:
-                print(f"Expected a Polygon, but got {type(self.poly).__name__}")
+            # # Check and plot self.poly if it's a Polygon
+            # if isinstance(self.poly, Polygon):
+            #     x, y = self.poly.exterior.xy
+            #     ax.fill(x, y, alpha=0.5, color='green', label='Polygon Boundary')
+            # else:
+            #     print(f"Expected a Polygon, but got {type(self.poly).__name__}")
     
-            # Check and plot circ if it's a Polygon
-            if isinstance(circ, Polygon):
-                x, y = circ.exterior.xy
-                ax.fill(x, y, alpha=0.5, color='blue', label='Circle')
-            else:
-                print(f"Expected a Circle Polygon, but got {type(circ).__name__}")
+            # # Check and plot circ if it's a Polygon
+            # if isinstance(circ, Polygon):
+            #     x, y = circ.exterior.xy
+            #     ax.fill(x, y, alpha=0.5, color='blue', label='Circle')
+            # else:
+            #     print(f"Expected a Circle Polygon, but got {type(circ).__name__}")
 
-            # Plot polygon boundary
+            # # Plot polygon boundary
 
-            poly_patch = PolygonPatch(self.poly, alpha=0.5, color='green')
-            ax.add_patch(poly_patch)
-            # Plot circle boundary
-            circle_patch = PolygonPatch(circ, alpha=0.5, color='blue')
-            ax.add_patch(circle_patch)
-            # Plot intersection point
-            ax.plot(trueArc.x, trueArc.y, 'ro', label='Intersection Point')
+            # poly_patch = PolygonPatch(self.poly, alpha=0.5, color='green')
+            # ax.add_patch(poly_patch)
+            # # Plot circle boundary
+            # circle_patch = PolygonPatch(circ, alpha=0.5, color='blue')
+            # ax.add_patch(circle_patch)
+            # # Plot intersection point
+            # ax.plot(trueArc.x, trueArc.y, 'ro', label='Intersection Point')
             
-            # Adjust the plot
-            xmin, ymin, xmax, ymax = self.poly.bounds
-            ax.set_xlim(xmin - 10, xmax + 10)
-            ax.set_ylim(ymin - 10, ymax + 10)
-            ax.legend()
-            plt.title('Polygon and Circle Intersection')
-            plt.xlabel('X Coordinates')
-            plt.ylabel('Y Coordinates')
-            plt.grid(True)
-            plt.show()
+            # # Adjust the plot
+            # xmin, ymin, xmax, ymax = self.poly.bounds
+            # ax.set_xlim(xmin - 10, xmax + 10)
+            # ax.set_ylim(ymin - 10, ymax + 10)
+            # ax.legend()
+            # plt.title('Polygon and Circle Intersection')
+            # plt.xlabel('X Coordinates')
+            # plt.ylabel('Y Coordinates')
+            # plt.grid(True)
+            # plt.show()
             
+            print('new line: ', self.center, trueArc)
             new_line = LineString([self.center, (trueArc.x, trueArc.y)])
             
             self.arcline = new_line
