@@ -192,9 +192,10 @@ class Layer():
                 h=l.split(":")
                 self.height=float(h[-1])
                 return
-        if self.layernumber > 0:
-            warnings.warn(f"Layer {self.layernumber}: no height found, using layerheight default!")
+        # if self.layernumber > 0:
+        #     warnings.warn(f"Layer {self.layernumber}: no height found, using layerheight default!")
         self.height=self.parameters.get("layer_height")
+        print(f'{self.height = }')
     def getRealFeatureStartPoint(self,idf:int)->Point:
         """ since GCode only stores destination of the move, the origin of the first move has to be included."""
         if idf<1:
@@ -205,28 +206,49 @@ class Layer():
                 return getPtfromCmd(line)
 
     def makeExternalPerimeter2Polys(self)->None:
+        """
+        Constructs external perimeter polygons from features listed in self.features.
+        This method processes features that are either categorized as 'External' or 'Overhang'.
+        It starts a new perimeter upon encountering these categories and continues until it reaches a feature
+        that does not fit these categories or until the end of the list, at which point it completes the polygon.
+        This function also handles manual overrides for perimeter checks.
+        """
+
         extPerimeterIsStarted=False
         for idf,fe in enumerate(self.features):
             ftype=fe[0]
             lines=fe[1]
-
+            # Check if the feature is an "External" or an "Overhang" type
+            # and manage the perimeter accordingly
             if "External" in ftype or ("Overhang" in ftype and extPerimeterIsStarted) or ("Overhang" in ftype and self.dontPerformPerimeterCheck): #two different types of perimeter to for a poly: external perimeter and overhang perimeter + option for manual errorhandling, when there is no feature "external"
+                # Start a new perimeter if not already started
                 if not extPerimeterIsStarted:
                     linesWithStart=[]
+                    # Fetch the starting point of the real feature if the feature index is greater than 1
                     if idf>1:
+                        print(f"Starting new perimeter at feature {idf} with type {ftype}.")
                         pt=self.getRealFeatureStartPoint(idf)
+                        # Check if the starting point is a Point type, append its GCode
                         if type(pt)==type(Point):
                             linesWithStart.append(p2GCode(pt))
                         else:
                             warnings.warn(f"Layer {self.layernumber}: Could not fetch real StartPoint.")
+                
+                # Add current feature's lines to the lines with start
+                # print(f"Adding lines to current perimeter for feature {idf}. Total lines now: {len(linesWithStart)}")
                 linesWithStart=linesWithStart+lines
                 extPerimeterIsStarted=True
+                
+            # If the perimeter has started and we reach the end of the features list or a non-external/overhang feature,
+            # finish the current perimeter polygon
             if extPerimeterIsStarted and (idf==len(self.features)-1 or not ("External" in ftype or "Overhang" in ftype)) :#finish the poly if end of featurelist or different feature
                 poly=makePolygonFromGCode(linesWithStart)
+                # If a valid polygon is formed, add it to the external perimeter polygons list
                 if poly:
                     self.extPerimeterPolys.append(poly)
                 extPerimeterIsStarted=False
-
+                
+    # TODO: Use abstracted plotting 
     def makeStartLineString(self,poly:Polygon,kwargs:dict={}):
         if not self.extPerimeterPolys:
             self.makeExternalPerimeter2Polys()

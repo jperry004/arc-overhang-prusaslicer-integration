@@ -27,6 +27,7 @@ Known issues:
 import sys
 import json
 import time
+import copy
 from shapely import Point, Polygon, LineString
 from shapely.ops import nearest_points
 import matplotlib.pyplot as plt
@@ -412,6 +413,7 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
         lastfansetting=layer.spotFanSetting(lastfansetting)
         layerobjs.append(layer)
         
+    outputLayers = copy.deepcopy(layerobjs)
     # Iterate through each layer object with its index
     for idl, layer in enumerate(layerobjs):
 
@@ -725,13 +727,13 @@ def main(gCodeFileStream,path2GCode,skipInput,overrideSettings)->None:
             if messedWithFan:
                 modifiedlayer.lines.append(f"M106 S{layer.fansetting:.0f}\n")
                 messedWithFan=False
-            layerobjs[idl]=modifiedlayer  # overwrite the infos
+            outputLayers[idl]=modifiedlayer  # overwrite the infos
 
     if gcodeWasModified:
         path2GCode=parameters.get("Path2Output")
         f=open(path2GCode,"w")
         print("write to",path2GCode)
-        for layer in layerobjs:
+        for layer in outputLayers:
             f.writelines(layer.lines)
         print('\nAdding settings')
         f.write('\n---------Arc Overhang Settings-----------')
