@@ -161,7 +161,7 @@ class Layer():
         self.binfills=[]
         self.features=[]
         self.oldpolys=[]
-        self.dontPerformPerimeterCheck=kwargs.get('notPerformPerimeterCheck',False)
+        self.dontPerformPerimeterCheck=kwargs.get('notPerformPerimeterCheck',True)
         self.deleteTheseInfills=[]
         self.deletelines=[]
         self.associatedIDs=[]
@@ -488,13 +488,22 @@ class Layer():
            print(f"Layer {self.layernumber}: {len(overhangs)} Overhangs found")
        if len(overhangs) > 0 and not self.polys:
            print('Trying the thing')
-           self.makeExternalPerimeter2Polys()
-           epp = self.extPerimeterPolys
-           for poly in epp:
-               print('appending dumb polu', poly)
-               self.polys.append(poly)
-    
-               plot_polygon(poly)
+           # self.makeExternalPerimeter2Polys()
+           # epp = self.extPerimeterPolys
+           pers =  self.spotFeaturePoints('Overhang perimeter')
+           print('pers', pers)
+           # Create a LineString from these points
+           line = LineString(pers[0])
+            
+           # Buffer the line to create a polygon that is 1mm thicker on each side
+           # Assuming units are such that 1 unit in coordinates equals 1mm
+           polygon = line.buffer(1)
+           self.polys.append(polygon)
+           # for poly in epp:
+           #     print('appending dumb polu', poly)
+           #     self.polys.append(poly)
+           
+           # plot_polygon(polygon)
            # Check if the allowed space for arcs has been defined
        allowedSpacePolygon = self.parameters.get("AllowedSpaceForArcs")
        if not allowedSpacePolygon:
