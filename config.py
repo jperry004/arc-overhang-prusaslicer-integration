@@ -19,7 +19,7 @@ def makeFullSettingDict(gCodeSettingDict:dict) -> dict:
         "MinBridgeLength":5,#Unit:mm
         "Path2Output":"", #leave empty to overwrite the file or write to a new file. Full path required.
         "RMax":5, # the max radius of the arcs.
-        "RMinStartMultiple":3, # multiple of the nozzle diameter for starting
+        "RMinStartMultiple":1, # multiple of the nozzle diameter for starting
         "TimeLapseEveryNArcs": 0, #deactivate with 0, inserts M240 after N ArcLines, 5 is a good value to start.
 
         #Special cooling to prevent warping:

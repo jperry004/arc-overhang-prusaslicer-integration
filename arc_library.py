@@ -481,7 +481,6 @@ class Layer():
        """
        # Retrieve line strings that represent overhang perimeters
        overhangs = self.getOverhangPerimeterLineStrings()
-   
     
        # Debug print the count of overhangs if enabled
        if len(overhangs) > 0 and self.parameters.get("PrintDebugVerification"):
@@ -490,20 +489,40 @@ class Layer():
            print('Trying the thing')
            # self.makeExternalPerimeter2Polys()
            # epp = self.extPerimeterPolys
+           # print(f'{self.features = }')
            pers =  self.spotFeaturePoints('Overhang perimeter')
            print('pers', pers)
            # Create a LineString from these points
            line = LineString(pers[0])
+           all_feature_coords = []
+           features = self.features
+           from buffer import parse_gcode, decide_buffer_direction, create_buffer
+           for feature in features:
+                # Ensure feature[1] (assumed to be a list of G-code lines) is passed as a whole to parse_gcode
+                feature_coords = parse_gcode(feature[1])
+                # print(len(feature_coords))
+                # if len(feature_coords) < 10:
+                #     print(feature_coords)
+                all_feature_coords.extend(feature_coords)
+           buffer_decisions = []
+           for feature in features:
+                # feature_coords = parse_gcode(feature[1])
+                # print(feature_coords)
+                buffer_side = decide_buffer_direction(line, all_feature_coords, 1)
+                buffer_decisions.append((feature[0], buffer_side))
             
+           #  # Output decisions
+           # for decision in buffer_decisions:
+           #      print("Feature Type:", decision[0], "Buffer Direction:", decision[1])
+
            # Buffer the line to create a polygon that is 1mm thicker on each side
            # Assuming units are such that 1 unit in coordinates equals 1mm
-           polygon = line.buffer(1)
+           # polygon = line.buffer(.69)
+           polygon = create_buffer(line, 1, side='left')
            self.polys.append(polygon)
-           # for poly in epp:
-           #     print('appending dumb polu', poly)
-           #     self.polys.append(poly)
-           
+           polygon = polygon.buffer(1)
            # plot_polygon(polygon)
+               # plot=False
            # Check if the allowed space for arcs has been defined
        allowedSpacePolygon = self.parameters.get("AllowedSpaceForArcs")
        if not allowedSpacePolygon:
@@ -519,6 +538,7 @@ class Layer():
            # Check if polygon is geometrically valid
            if not poly.is_valid and self.parameters.get("PrintDebugVerification"):
                print(f"Layer {self.layernumber}: Poly{idp} is (shapely-)invalid")
+               print(poly)
                continue
     
            # Check if the polygon is within the allowed space
